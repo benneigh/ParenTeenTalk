@@ -16,7 +16,7 @@ reddit = praw.Reddit(
 )
 
 # Define the subreddit, total number of posts to retrieve, and keywords
-subreddit_name = 'teenagers'
+subreddit_name = 'parenting'
 total_posts = 10000
 posts_per_batch = 10000  # Number of posts per batch
 pause_duration = 10  # Pause duration in seconds (1 hour)
@@ -92,7 +92,7 @@ while processed_posts < total_posts:
                 current_end_date = current_start_date
 
             # Save progress incrementally to avoid data loss
-            output_file = f"{subreddit_name}_sexual_health_data_2.json"
+            output_file = f"{subreddit_name}_1.json"
             with open(output_file, 'w') as f:
                 json.dump(posts, f, indent=4)
 
