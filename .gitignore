@@ -1,0 +1,5 @@
+reddit_posts_index.json/
+reddit_posts_index/
+env/
+reddit_data/.env
+.env

@@ -1,0 +1,368 @@
+This document represents the analysis of Reddit posts.
+
+Potential Process Attributes:
+
+1.  Quality Filter: Sentiment Analysis of whether or not a post is a "Rant"
+2.	Question Detection: Identifying question marks and common question words
+3.	Scenario Detection: Pronoun + Verb analysis to detect scenario posts.
+4.	Advice Extraction: Keyword recognition.
+5.	Cluster Analysis 
+6.  Topic Analysis
+7.  Individual Word Count
+8. LLM Topic Analysis:
+
+
+1. Quality Filter:
+Description: We aim to classify posts on whether they are rants or not and provide a count of the posts classified
+as rants to understand the overall quality of the content. 
+We use the sentiment analysis tool called VADER which is a part of the NLTK library.
+
+Results:
+r/teenagers = Total number of rants: 71/4469 = 1.59%
+r/parenting = Total number of rants: 0/1206 = 0.00%
+
+2. Question Detection: 
+Description: Check for posts that contain questions based on common question words and a question mark.
+We use simple regex to identify such sentences.
+
+Results:
+r/teenagers = Total number of posts with questions: 2322/4469 = 51.96%
+r/parenting = Total number of posts with questions: 1183/1206 = 98.09%
+
+3. Scenario Detection:
+Description: We aim to classify posts based on whether or not they describe a scenario. We will be acheiving this by analyzing
+the pronouns and verbs using dependency parsing with SpaCy where pronouns combined with action verbs will identify as a scenario.
+
+Results:
+r/teenagers = Total number of posts with scenarios: 2199/4469 = 49.21%
+r/parenting = Total number of posts with scenarios: 1180/1206 = 97.84%
+
+4. Advice Extraction: 
+Description: We aim to identify posts that have advice-giving language by finding those with common keywords like "I suggest", "My recommendation",
+"Try doing", and such. 
+
+Results:
+r/teenagers = Total number of posts with advice: 300/4469 = 6.71%
+r/parenting = Total number of posts with advice: 304/1206 = 25.21%
+
+5. Cluster Analysis: Created a script to analyze and group posts based on similar topics. Results are not as expected. Grouping into topics do not turn out good due to the content present
+in the posts.
+
+6. Topic Analysis: Provided similar results as Cluster Analysis.
+
+7. Individual Word Count:
+
+Results:
+
+For r/teenagers: 
+
+like: 3462
+im: 3143
+dont: 2410
+get: 1806
+people: 1762
+sex: 1738
+know: 1671
+one: 1642
+time: 1631
+friend: 1546
+want: 1529
+thing: 1474
+really: 1335
+would: 1274
+even: 1242
+go: 1191
+make: 1163
+girl: 1121
+think: 1118
+year: 1104
+feel: 1069
+also: 993
+guy: 956
+life: 952
+say: 936
+ive: 918
+school: 908
+got: 884
+never: 853
+day: 831
+said: 824
+good: 807
+much: 803
+didnt: 769
+still: 769
+see: 745
+someone: 732
+something: 714
+thats: 712
+cant: 710
+way: 694
+going: 676
+first: 668
+sexual: 664
+back: 657
+could: 657
+u: 648
+take: 623
+youre: 621
+lot: 618
+anything: 600
+love: 600
+right: 580
+relationship: 576
+ever: 569
+shit: 564
+na: 562
+need: 559
+talk: 555
+tell: 548
+told: 544
+well: 544
+bad: 535
+boy: 527
+made: 523
+every: 519
+parent: 512
+look: 510
+always: 506
+help: 501
+doesnt: 499
+around: 496
+mean: 485
+let: 481
+shes: 476
+thought: 474
+started: 472
+person: 459
+fucking: 453
+come: 442
+many: 439
+find: 437
+last: 429
+he: 427
+fuck: 424
+kid: 422
+long: 421
+talking: 420
+anyone: 419
+actually: 418
+since: 417
+month: 409
+woman: 401
+point: 401
+everyone: 399
+getting: 397
+wanted: 397
+stuff: 393
+give: 388
+there: 384
+
+
+For r/parenting:
+im: 2492
+know: 2017
+like: 1975
+time: 1949
+want: 1900
+dont: 1842
+year: 1747
+kid: 1732
+get: 1665
+would: 1602
+daughter: 1494
+child: 1400
+thing: 1372
+son: 1317
+sex: 1249
+feel: 1220
+one: 1165
+go: 1070
+told: 1067
+parent: 1061
+also: 1043
+school: 1038
+friend: 1014
+even: 985
+said: 976
+think: 975
+day: 970
+going: 960
+shes: 936
+he: 930
+really: 922
+make: 915
+never: 904
+u: 897
+baby: 877
+old: 875
+mom: 873
+life: 868
+didnt: 865
+got: 831
+say: 822
+talk: 778
+ive: 774
+doesnt: 771
+much: 767
+home: 766
+month: 760
+back: 758
+family: 740
+girl: 712
+husband: 712
+week: 695
+help: 692
+need: 692
+way: 692
+well: 666
+could: 656
+first: 653
+since: 646
+work: 644
+always: 632
+see: 627
+boy: 619
+come: 612
+take: 607
+still: 607
+tell: 606
+something: 599
+dad: 589
+house: 578
+anything: 576
+love: 563
+relationship: 552
+good: 549
+lot: 544
+little: 541
+wife: 528
+let: 522
+asked: 517
+cant: 513
+right: 507
+sure: 501
+around: 500
+every: 492
+night: 491
+two: 488
+made: 484
+people: 482
+last: 476
+thought: 473
+started: 471
+went: 461
+mother: 458
+away: 453
+advice: 446
+wanted: 443
+pregnant: 440
+getting: 439
+age: 435
+birth: 431
+
+
+8. LLM Topic Analysis:
+
+Description: Starts by censoring vulgar language in each post using the better_profanity library (OpenAI has strict policies for vulgar language so our reddit data was causing issues). \
+It then batches the cleaned posts and sends each batch to the LLM API, requesting a summary of main themes or topics.
+
+Results:
+(env) aryansk@Arys-MacBook-Pro-279 reddit_data % python ./llm_topic_analysis.py
+Processing batch 1...
+Topics in batch 1: The main themes or life challenges covered in the provided posts include:
+
+1. Relationship breakups and challenges in romantic relationships (2 distinct topics)
+2. Mental health and its impact on relationships and daily life (4 distinct topics)
+3. School-related challenges and experiences (2 distinct topics)
+4. **** education and responsibility (1 distinct topic)
+5. Support and offering help to others (1 distinct topic)
+6. **** health and gender identity (1 distinct topic)
+7. Environmental and climate change concerns (1 distinct topic)
+8. Online safety and cautionary tales (1 distinct topic)
+9. Transition from childhood to adolescence and its challenges (1 distinct topic)
+10. Moral dilemmas and ethical considerations (1 distinct topic)
+11. Challenges of giftedness and social skills development (1 distinct topic)
+12. Insecurity, body image issues, and self-esteem (1 distinct topic)
+13. Bullying and harassment (2 distinct topics)
+14. Identity formation and self-acceptance (1 distinct topic)
+15. Teenagers' struggles and life goals (1 distinct topic)
+16. General health and medical information (2 distinct topics)
+17. Various challenges related to sexuality and relationships (4 distinct topics)
+
+Note: The estimated number of distinct topics is subjective and may vary based on interpretation.
+
+Processing batch 2...
+Topics in batch 2: Main Themes:
+
+1. Mental Health Struggles (7 posts): Multiple posts discuss personal struggles with mental health, including bullying, stress from parents, self-esteem issues, and thoughts of self-harm.
+2. Abusive Relationships (2 posts): Two posts mention abusive relationships and the negative impact they have had on the individuals' mental health.
+3. Transgender and LGBTQ+ Support (1 post): One post emphasizes the importance of prioritizing mental health over grades and supports individuals regardless of their sexual orientation or gender identity.
+4. Teenage Advice (3 posts): Three posts offer advice to other teenagers based on their own experiences, covering a range of topics.
+5. Sexual Assault (3 posts): Three posts mention instances of sexual assault and express concern for the mental health of the victims.
+6. Reproductive/**** Health (1 post): One post promotes a health resource for teenagers related to puberty and reproductive/**** health.
+7. Inadequate Mental Health Support (1 post): One post expresses dissatisfaction with the mental health support provided by the school.
+8. Personal Journey of Self-Improvement (1 post): One post describes personal growth and self-improvement as a lifelong pursuit.
+
+Estimate: There are 8 main themes.
+
+Processing batch 3...
+Topics in batch 3: Based on the provided data, the main themes or life challenges covered are as follows:
+
+1. Friendship and betrayal: A close friend lying and talking badly about the person (1 topic)
+
+2. Sexual health and contraception: Discussing the effectiveness of safe **** and contraceptives in preventing pregnancy (1 topic)
+
+3. Family dynamics and divorce: Dealing with parents' divorce and limited contact with one parent (1 topic)
+
+4. Romantic relationships: Sharing experiences and concerns about a current relationship (1 topic)
+
+5. Transitioning from high school to college: Desiring a college experience and feeling disappointed due to COVID-19 restrictions (1 topic)
+
+6. Childhood abuse and trauma: Sharing experiences of abuse and its impact on mental health (1 topic)
+
+7. Mental health and awareness: Discussing the importance of addressing men's mental health and sharing personal struggles (1 topic)
+
+8. Acts of kindness and concerns for others: Witnessing a car accident and showing compassion towards others (1 topic)
+
+9. Self-reflection and personal growth: Reflecting on life experiences and sharing advice with others (1 topic)
+
+10. Gender and sexuality: Discussing gender, sexuality, and the importance of inclusive discussions (1 topic)
+
+11. Adolescence and transition to adulthood: Reflecting on turning 20 and leaving adolescence, sharing life experiences (1 topic)
+
+12. Online validation and seeking support: Addressing the need for social validation and support (1 topic)
+
+13. Drugs and addiction: Sharing personal experiences with drug addiction and advocating for prioritizing mental health (1 topic)
+
+14. Writing about personal experiences and mental health: Expressing feelings and experiences related to mental health (1 topic)
+
+15. Gaming and internet culture: Discussing the impact of internet **** on young boys and men (1 topic)
+
+16. Personal relationships and conflicts: Sharing experiences of conflicts with friends and family members (1 topic)
+
+17. Lack of romantic attraction: Discussing the absence of romantic feelings and frustration with societal expectations (1 topic)
+
+18. Personal resentment and self-hatred: Expressing feelings of resentment towards oneself (1 topic)
+
+Please note that there may be some overlap in topics and themes discussed in the data. In total, there are 18 distinct topics discussed in the provided data.
+
+Processing batch 4...
+Topics in batch 4: Based on the provided data, the main themes or life challenges covered include:
+
+1. Family dynamics and parental separation (2 posts)
+2. Self-discovery and questioning sexuality (1 post)
+3. Mental health challenges and traumatic experiences (2 posts)
+4. Gender identity and transphobia (2 posts)
+5. Differences in beliefs and values in friendships (1 post)
+6. Negative experiences with **** and sexual assault (3 posts)
+7. Personal experiences in school and education (2 posts)
+8. Social issues and societal discrimination (1 post)
+9. Transition into adulthood and reflections on teenage years (2 posts)
+10. Biological and sexual health education (2 posts)
+11. Reflections on personal growth and advice for others (2 posts)
+12. Harmful stereotypes and mental health suppression (1 post)
+13. Troubled friendships and blocked/lost connections (2 posts)
+14. Controversial figures or beliefs in the field of psychology (1 post)
+15. Creative project sharing and interest in fantasy/sci-fi (1 post)
+
+There are 15 distinct topics identified in the posts.
