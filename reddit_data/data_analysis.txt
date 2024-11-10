@@ -9,7 +9,7 @@ Potential Process Attributes:
 5.	Cluster Analysis 
 6.  Topic Analysis
 7.  Individual Word Count
-8. LLM Topic Analysis:
+8.  LLM Topic Analysis
 
 
 1. Quality Filter:
