@@ -1,0 +1,22 @@
+Starting Conversation ID: conv-20241110205014
+
+**** Parent:
+Hey kiddo, since you're about to turn 15, I think it's time we have an important chat about safe sex. I want you to know that you can always talk to me about anything, and I'll do my best to give you the information you need to stay safe and make healthy choices. So, what do you know about safe sex, and do you have any questions or thoughts on the subject?
+
+**** Child:
+Uh, okay... I know a bit about safe sex, like using condoms and stuff, but it's kind of awkward to talk about. I don't have a boyfriend, so I don't need to worry about it right now, right? Can we talk about this some other time?
+
+**** Parent:
+I understand you might find this conversation a bit uncomfortable, and that's okay. It's good that you're aware of things like condoms, but there's more to learn about safe sex beyond just that. It's not just about having a boyfriend; it's about knowing how to take care of yourself and make smart decisions in the future. We don't have to talk about it this very minute, but let's set a time in the next few days to chat more. How about this weekend? We can keep it casual, and you can ask any questions you have, no matter how awkward they seem. Does that sound good to you?
+
+**** Child:
+Okay, I guess we can talk about it this weekend. Can we just make sure it's not a big deal and keep it straightforward? I might have some questions then.
+
+**** Parent:
+Absolutely, we'll keep it straightforward. I'm here to support you and provide you with information you need to make informed decisions. If any question or topic makes you feel uncomfortable, just let me know, and we can approach it in a way that works better for you. Remember, there's no pressure – it's all about making sure you feel safe and informed. I'm proud of you for being willing to have this talk. If you think of any questions before this weekend, feel free to write them down or bring them up anytime.
+
+**** Child:
+Okay, thanks for understanding. I’ll let you know if I have any questions before the weekend.
+
+
+Conversation ended.
