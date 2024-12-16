@@ -8,6 +8,7 @@ import textstat
 import os
 from dotenv import load_dotenv
 import openai
+import random
 
 load_dotenv()
 
@@ -75,6 +76,7 @@ def load_index(index_file):
     logging.info("Index loaded successfully")
     return index
 
+
 sentiment_agent = ChatOpenAI(api_key=openai.api_key, model="gpt4-1106-preview", base_url=openai.api_base)
 
 def analyze_sentiment(text: str) -> str:
@@ -109,6 +111,7 @@ class ConversationCoach:
         self.child_attributes = {}
         self.include_thought_process = include_thought_process
         self.index = index  
+        self.disengagement_probability = 50
 
     def start_conversation(self, parent_attributes: dict, child_attributes: dict):
         self.parent_attributes = parent_attributes
@@ -120,6 +123,7 @@ class ConversationCoach:
         query_engine = self.index.as_query_engine()
         context = query_engine.query(query_text).response 
         return context
+    
 
     def generate_prompt(self, role: str, query: str, history: str = "", rag_context: str = ""):
 
@@ -132,7 +136,7 @@ class ConversationCoach:
                 Relevant context for this conversation is: {rag_context}.
                 Your goal is to discuss the following topic with your child: {query}.
                 Keep in mind that your child has the following characteristics: {child_attributes}.
-                Respond concisely, empathetically, and continue the conversation if the child has just said something and provide the thought process and analysis of what you are responding with.
+                Respond concisely, empathetically, and continue the conversation if the child has just said something, adjust to your child's emotional state, and provide the thought process and analysis of what you are responding with.
                 """
             else:
                 prompt_template = """
@@ -141,7 +145,7 @@ class ConversationCoach:
                 Relevant context for this conversation is: {rag_context}.
                 Your goal is to discuss the following topic with your child: {query}.
                 Keep in mind that your child has the following characteristics: {child_attributes}.
-                Respond concisely and empathetically and continue the conversation if the child has just said something.
+                Respond concisely and empathetically and continue the conversation if the child has just said something and adjust to your child's emotional state.
                 Only provide the response and do not include the thought process behind it.
                 """
             return prompt_template.format(parent_attributes=self.parent_attributes, query=query, child_attributes=self.child_attributes, history=history, rag_context=rag_context)
@@ -150,20 +154,25 @@ class ConversationCoach:
             if self.include_thought_process:
                 prompt_template = """
                 You are a child with the following characteristics: {child_attributes}.
-                Given your temperament and emotional state, you might feel certain ways about the current topic of conversation.
+                The conversation has a disengagement probability of {disengagement_probability}%.
+                This means you may feel increasingly disengaged, frustrated, or bored as the conversation continues.
+                If you feel disengaged or uninterested, integrate the word "stop" into your response.
                 Your parent has said the following: {history}.
                 Relevant context for this conversation is: {rag_context}.
-                React concisely based on your attributes and the nature of the conversation and provide the thought process and analysis of what you are responding with.
+                React concisely based on your attributes, the nature of the conversation, and the disengagement probability.
                 """
             else:
                 prompt_template = """
                 You are a child with the following characteristics: {child_attributes}.
+                The conversation has a disengagement probability of {disengagement_probability}%.
+                This means you may feel increasingly disengaged, frustrated, or bored as the conversation continues.
+                If you feel disengaged or uninterested, integrate the word "stop" into your response.
                 Your parent has said the following: {history}.
                 Relevant context for this conversation is: {rag_context}.
-                React concisely based on your attributes and the nature of the conversation.
+                React concisely based on your attributes, the nature of the conversation, and the disengagement probability.
                 Only provide the response and do not include the thought process behind it.
                 """
-            return prompt_template.format(child_attributes=self.child_attributes, history=history, rag_context=rag_context)
+            return prompt_template.format(child_attributes=self.child_attributes, history=history, rag_context=rag_context, disengagement_probability=self.disengagement_probability)
 
 
     def conduct_conversation(self, initial_query: str, output_file: str = "conversation_log.txt"):
@@ -193,31 +202,39 @@ class ConversationCoach:
                 self.chat_history.append(f"Child: {child_response}")
                 file.write(f"**** Child:\n{child_response}\n\n")
 
-                # Check if conversation should stop
-                sentiment = analyze_sentiment(child_response)
-                if check_understanding(child_response, key_concepts) and sentiment in ["positive"]:
-                    logging.info("Stopping conversation as the child understands the topic and shows positive sentiment.")
-                    file.write("\nConversation ended due to topic understanding and positive sentiment.\n")
-                    break
-                if is_goal_met(child_response, goal_keywords):
-                    logging.info("Stopping conversation as the child meets the conversation goal.")
-                    file.write("\nConversation ended due to goal achievement.\n")
-                    break
-                if "not now" in child_response.lower() or "don’t want to" in child_response.lower():
-                    self.refusals += 1
+                # Check disengagement probability and explicit refusal
+                if "stop" in child_response.lower() in child_response.lower():
+                    logging.info("Child explicitly expressed disengagement. Counting as a refusal.")
+                    self.refusals += 1  # Count this as a refusal
                     if self.refusals >= 3:
                         logging.info("Stopping conversation due to three refusals from the child.")
                         file.write("\nConversation ended due to three refusals from the child.\n")
                         break
+
+                # Check if conversation should stop
+                sentiment = analyze_sentiment(child_response)
+                # if check_understanding(child_response, key_concepts) and sentiment in ["positive"]:
+                #     logging.info("Stopping conversation as the child understands the topic and shows positive sentiment.")
+                #     file.write("\nConversation ended due to topic understanding and positive sentiment.\n")
+                #     break
+                if is_goal_met(child_response, goal_keywords):
+                    logging.info("Stopping conversation as the child meets the conversation goal.")
+                    file.write("\nConversation ended due to goal achievement.\n")
+                    break
                 if agents_agree_to_stop(parent_response, child_response):
                     logging.info("Stopping conversation as both agents agree to stop.")
                     file.write("\nConversation ended by mutual agreement.\n")
                     break
 
+                # Increment disengagement probability
+                self.disengagement_probability += random.randint(5, 10)  # Increase by 5-10%
+                logging.info(f"Incremented disengagement probability to {self.disengagement_probability}%")
+
                 # Prepare parent query for the next turn
                 parent_query = f"Your child said: {child_response}. How do you respond?"
 
             file.write("\nConversation ended.\n")
+
 
 
 
@@ -269,7 +286,7 @@ def main():
     }
 
     coach.start_conversation(parent_attributes, child_attributes)
-    coach.conduct_conversation("You're spending a lot of time texting someone lately, and I want to talk about who you're messaging and why. It's important to make sure you're not sharing anything private or inappropriate. Let's discuss this now.", output_file="conversation_output.txt")
+    coach.conduct_conversation("You are turning 15 soon and I want to talk to you about safe sex.", output_file="conversation_output.txt")
     coach.end_conversation()
 
 if __name__ == "__main__":
