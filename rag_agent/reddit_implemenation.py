@@ -1,5 +1,8 @@
 import json
 import openai
+from openai import OpenAI
+
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 import os
 import logging
 from dotenv import load_dotenv
@@ -14,8 +17,8 @@ load_dotenv()
 logging.info("Loaded environment variables from .env file")
 
 # Set up your ChatGPT API key and base from environment variables
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.api_base = os.getenv("OPENAI_API_BASE")
+# TODO: The 'openai.api_base' option isn't read in the client API. You will need to pass it when you instantiate the client, e.g. 'OpenAI(base_url=os.getenv("OPENAI_API_BASE"))'
+# openai.api_base = os.getenv("OPENAI_API_BASE")
 logging.info("Configured OpenAI API key and base URL")
 
 # Function to load JSON data from the file
@@ -66,14 +69,12 @@ def query_index(index, query_text):
 # Function to generate a response using the retrieved context and ChatGPT
 def generate_response_from_context(context, query):
     logging.info("Generating response from context using ChatGPT")
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant that provides information about teenage sexual health."},
-            {"role": "user", "content": f"{context}\n\nQuery: {query}"}
-        ]
-    )
-    answer = response['choices'][0]['message']['content']
+    response = client.chat.completions.create(model="gpt-4",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant that provides information about teenage sexual health."},
+        {"role": "user", "content": f"{context}\n\nQuery: {query}"}
+    ])
+    answer = response.choices[0].message.content
     logging.info("Response generated successfully")
     return answer
 
@@ -82,7 +83,7 @@ def main():
     # Load the JSON file with Reddit posts
     file_path = 'reddit_data.json'  # Replace with your actual JSON file path
     posts_data = load_json_data(file_path)
-    
+
     # Create documents from posts
     documents = create_documents_from_posts(posts_data)
 
@@ -99,7 +100,7 @@ def main():
     # Query the index to get the relevant context
     query_engine = index.as_query_engine()
     response = query_engine.query(query)
-    
+
     # Print the response
     logging.info("Final Response:")
     print("Response:", response)

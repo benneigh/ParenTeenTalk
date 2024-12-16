@@ -37,6 +37,27 @@ def create_documents_from_posts(posts):
     logging.info(f"Created {len(documents)} documents")
     return documents
 
+def check_understanding(response: str, key_concepts: list) -> bool:
+    """Check if the child mentions key concepts to ensure topic understanding."""
+    response_lower = response.lower()
+    for concept in key_concepts:
+        if concept.lower() in response_lower:
+            return True
+    return False
+
+def agents_agree_to_stop(parent_response: str, child_response: str) -> bool:
+    """Check if both parent and child agree to stop the conversation."""
+    stop_keywords = ["let’s stop", "end this", "we're done"]
+    return any(keyword in parent_response.lower() for keyword in stop_keywords) and \
+           any(keyword in child_response.lower() for keyword in stop_keywords)
+
+
+def is_goal_met(response: str, goal_keywords: list) -> bool:
+    """Check if the response aligns with the conversation goal."""
+    response_lower = response.lower()
+    return all(keyword.lower() in response_lower for keyword in goal_keywords)
+
+
 
 def create_and_save_index(documents, index_file):
     if not os.path.exists(index_file):
@@ -146,14 +167,16 @@ class ConversationCoach:
 
 
     def conduct_conversation(self, initial_query: str, output_file: str = "conversation_log.txt"):
-   
         with open(output_file, "w") as file:
-
             parent_query = initial_query
-            file.write(f"Starting Conversation ID: {self.conversation_id}\n\n")
-            
-            for turn in range(10): 
+            self.refusals = 0  # Track refusals
+            key_concepts = ["consent", "protection", "disease", "pregnancy", "responsibility"]
+            goal_keywords = ["safe sex", "consent", "protection"]
 
+            file.write(f"Starting Conversation ID: {self.conversation_id}\n\n")
+
+            for turn in range(10):  # Safeguard with a max turn limit
+                # Retrieve RAG context
                 rag_context = self.retrieve_context(parent_query)
 
                 # Generate parent response
@@ -170,19 +193,32 @@ class ConversationCoach:
                 self.chat_history.append(f"Child: {child_response}")
                 file.write(f"**** Child:\n{child_response}\n\n")
 
-                 # Analyze sentiment of child's response
+                # Check if conversation should stop
                 sentiment = analyze_sentiment(child_response)
-                logging.info(f"Child's sentiment: {sentiment}")
-
-                # Stop conversation if sentiment is positive or neutral
-                if sentiment in ["positive"]:
-                    logging.info(f"Stopping conversation as child's sentiment is {sentiment}")
-                    file.write("\nConversation ended due to positive/neutral sentiment.\n")
+                if check_understanding(child_response, key_concepts) and sentiment in ["positive"]:
+                    logging.info("Stopping conversation as the child understands the topic and shows positive sentiment.")
+                    file.write("\nConversation ended due to topic understanding and positive sentiment.\n")
+                    break
+                if is_goal_met(child_response, goal_keywords):
+                    logging.info("Stopping conversation as the child meets the conversation goal.")
+                    file.write("\nConversation ended due to goal achievement.\n")
+                    break
+                if "not now" in child_response.lower() or "don’t want to" in child_response.lower():
+                    self.refusals += 1
+                    if self.refusals >= 3:
+                        logging.info("Stopping conversation due to three refusals from the child.")
+                        file.write("\nConversation ended due to three refusals from the child.\n")
+                        break
+                if agents_agree_to_stop(parent_response, child_response):
+                    logging.info("Stopping conversation as both agents agree to stop.")
+                    file.write("\nConversation ended by mutual agreement.\n")
                     break
 
+                # Prepare parent query for the next turn
                 parent_query = f"Your child said: {child_response}. How do you respond?"
 
             file.write("\nConversation ended.\n")
+
 
 
     def end_conversation(self):
@@ -233,7 +269,7 @@ def main():
     }
 
     coach.start_conversation(parent_attributes, child_attributes)
-    coach.conduct_conversation("You are turning 15 soon and I want to talk to you about safe sex.", output_file="conversation_output.txt")
+    coach.conduct_conversation("You're spending a lot of time texting someone lately, and I want to talk about who you're messaging and why. It's important to make sure you're not sharing anything private or inappropriate. Let's discuss this now.", output_file="conversation_output.txt")
     coach.end_conversation()
 
 if __name__ == "__main__":
