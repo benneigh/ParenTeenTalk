@@ -171,6 +171,7 @@ class ConversationCoach:
                 Relevant context for this conversation is: {rag_context}.
                 React concisely based on your attributes, the nature of the conversation, and the disengagement probability.
                 Only provide the response and do not include the thought process behind it.
+                Also quote the relevant content from the context.
                 """
             return prompt_template.format(child_attributes=self.child_attributes, history=history, rag_context=rag_context, disengagement_probability=self.disengagement_probability)
 
