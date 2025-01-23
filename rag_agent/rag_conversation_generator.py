@@ -190,14 +190,14 @@ class ConversationCoach:
 
 def main():
 
-    file_path = 'r_teenagers.json' 
+    file_path = 'reddit_data.json' 
     posts_data = load_json_data(file_path)
     
 
     documents = create_documents_from_posts(posts_data)
 
 
-    index_file = 'reddit_posts_index'  
+    index_file = 'reddit_index'  
     create_and_save_index(documents, index_file)
 
     index = load_index(index_file)
