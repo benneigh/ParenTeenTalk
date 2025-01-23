@@ -276,21 +276,25 @@ def main():
     coach = ConversationCoach(api_key, base_url, include_thought_process=False, index=index)
 
     parent_attributes = {
-        "confidence_level": "medium",
-        "vocab_complexity": "simple",
-        "patience_level": "medium",
-        "triggers": ["disrespect"],
-        "embarrassment_level" : "medium",
-        "openness_level" : "medium",
-        "freeness_level" : "medium",
-        "responsiveness_level" : "medium",
-        "parenting_style": "strict",
-        "big_five": {
-            "openness": "medium", 
-            "conscientiousness": "medium",
-            "extraversion": "medium",
-            "agreeableness": "medium",
-            "neuroticism": "medium"
+        "confidence_level": {
+            "value": "medium",
+            "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with child."
+        },
+        "patience_level": {
+            "value": "medium",
+            "definition": "Ability to remain calm and composed during difficult and long conversations."
+        },
+        "triggers": {
+            "value": ["disrespect"],
+            "definition": "A trigger will cause the parent to react negatively and maybe even derail the conversation."
+        },
+        "comfort_level": {
+            "value": "medium",
+            "definition": "Degree of parent’s comfort or ease about conversations surrounding sexuality"
+        },
+        "open_dialogue": {
+            "value": "medium",
+            "definition": "Degree to which parent engages in a direct and positive dialogue, as opposed to a closed and one-sided lecture"
         }
     }
     child_attributes = {
