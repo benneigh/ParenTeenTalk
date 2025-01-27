@@ -134,32 +134,55 @@ class ConversationCoach:
     
 
     def generate_prompt(self, role: str, query: str, history: str = "", rag_context: str = ""):
-
         if role == "parent":
             if self.include_thought_process:
                 prompt_template = """
-                You are a parent with the following attributes: {parent_attributes}.
-                Given your characteristics, you might approach this conversation in a certain way. Be mindful of your child's sensitivity and characteristics while responding.
+                You are a parent with the following attributes:
+                {parent_attributes}.
+                Each attribute is defined as follows:
+                {attribute_definitions}.
                 You are continuing a conversation with your child. So far, this has been said: {history}.
                 Relevant context for this conversation is: {rag_context}.
                 Your goal is to discuss the following topic with your child: {query}.
                 Keep in mind that your child has the following characteristics: {child_attributes}.
-                Make sure to respond with a simple vocabulary that suits the child's age.
                 Respond concisely, empathetically, and continue the conversation if the child has just said something, adjust to your child's emotional state, and provide the thought process and analysis of what you are responding with.
+                Keep your response realistic, natural, and reflective of how a parent would actually speak to their child.
+                Circle back to the main topic whenever the conversation drifts off course, but limit this to only two times during the discussion.
+                Keep your vocabulary simple and age-appropriate, and your response concise but engaging.
+                Make sure to respond with a simple vocabulary that suits the child's age.
                 """
             else:
                 prompt_template = """
-                You are a parent with the following attributes: {parent_attributes}.
+                You are a parent with the following attributes:
+                {parent_attributes}.
+                Each attribute is defined as follows:
+                {attribute_definitions}.
                 You are continuing a conversation with your child. So far, this has been said: {history}.
                 Relevant context for this conversation is: {rag_context}.
                 Your goal is to discuss the following topic with your child: {query}.
                 Keep in mind that your child has the following characteristics: {child_attributes}.
                 Respond concisely and empathetically and continue the conversation if the child has just said something and adjust to your child's emotional state.
-                Make sure to respond with a simple vocabulary that suits the child's age.
+                Keep your response realistic, natural, and reflective of how a parent would actually speak to their child.
+                Circle back to the main topic whenever the conversation drifts off course, but limit this to only two times during the discussion.
+                Keep your vocabulary simple and age-appropriate, and your response concise but engaging.
                 Only provide the response and do not include the thought process behind it.
                 """
-            return prompt_template.format(parent_attributes=self.parent_attributes, query=query, child_attributes=self.child_attributes, history=history, rag_context=rag_context)
-
+            # Construct attribute definitions
+            attribute_definitions = "\n".join(
+                f"- {key}: {attr['definition']}" for key, attr in self.parent_attributes.items()
+            )
+            # Replace placeholders
+            return prompt_template.format(
+                parent_attributes=", ".join(
+                    f"{key}: {attr['value']}" for key, attr in self.parent_attributes.items()
+                ),
+                attribute_definitions=attribute_definitions,
+                query=query,
+                child_attributes=self.child_attributes,
+                history=history,
+                rag_context=rag_context
+            )
+        
         elif role == "child":
             if self.include_thought_process:
                 prompt_template = """
@@ -275,14 +298,12 @@ def main():
     
     coach = ConversationCoach(api_key, base_url, include_thought_process=False, index=index)
 
+
+    # NEED TO ADD ATTRIBUTE DEFINITION SUMMATION
     parent_attributes = {
         "confidence_level": {
             "value": "medium",
             "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with child."
-        },
-        "patience_level": {
-            "value": "medium",
-            "definition": "Ability to remain calm and composed during difficult and long conversations."
         },
         "triggers": {
             "value": ["disrespect"],
