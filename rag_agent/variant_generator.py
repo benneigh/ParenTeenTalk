@@ -1,6 +1,8 @@
 import os
 import logging
 import random
+import csv
+import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -10,16 +12,39 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+EXCEL_FILE_PATH = "filtered_topics_10_13.xlsx"
+
+
+# Parent and child attribute templates
+parent_template = {
+    "confidence_level": {"value": "medium", "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with the child."},
+    "comfort_level": {"value": "medium", "definition": "Degree of parent’s comfort or ease about conversations surrounding sexuality."},
+    "open_dialogue": {"value": "high", "definition": "Degree to which parent engages in a direct and positive dialogue, as opposed to a closed and one-sided lecture"},
+    "role": {"value": random.choice(["mother", "father"]), "definition": "The parent's gender and role in the family."}
+}
+
+child_template = {
+    "age": {"value": "13", "definition": "Chronological age of child used as an indicator of pubertal status and readiness for conversations of different depth (more depth as child gets older) and breadth (more breadth as child gets older)"},
+    "embarrassment_level": {"value": "low", "definition": "Degree of child’s discomfort or unease about conversations surrounding sexuality that may prevent open dialogue"},
+    "parent_child_closeness_level": {"value": "medium", "definition": "Degree of closeness and comfort with parent."},
+    "gender": {"value": random.choice(["male", "female", "non-binary"]), "definition": "The child's gender identity."}
+}
+
 class VariantGenerator:
-    def __init__(self, api_key: str, base_url: str, index=None):
+    def __init__(self, api_key: str, base_url: str, engagement_score: str, index=None):
         self.api_key = api_key
         self.base_url = base_url
         self.index = index
-        # Change it to 4-o
-        self.parent_agent = ChatOpenAI(api_key=api_key, model="gpt4-1106-preview", base_url=base_url)
-        self.child_agent = ChatOpenAI(api_key=api_key, model="gpt4-1106-preview", base_url=base_url)
-        self.disengagement_probability = 50
+        self.parent_agent = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
+        self.child_agent = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
+        self.evaluator_agent = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
+        self.query_generator_agent = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
+        # Change this
+        # self.engagement_score = round(random.uniform(-1, 1), 1)
+        self.engagement_score = engagement_score
+        # self.disengagement_probability = 40
         self.refusals = 0
+
 
     def retrieve_context(self, query_text: str) -> str:
         if self.index is None:
@@ -32,155 +57,294 @@ class VariantGenerator:
         except Exception as e:
             logging.error(f"Error retrieving context: {e}")
             return ""
+        
+    
+    # def generate_query(self):
+    #     query_prompt = """
+    #     THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
+    #     You are tasked with creating a discussion topic about sexual health for a conversation with a teen aged 10-13.
+    #     Provide a single topic of discussion that the parent wants to talk about.
+    #     The topic should be a phrase and not a question or a statement.
+    #     """
+    #     try:
+    #         query = self.query_generator_agent.invoke(query_prompt).content.strip()
+    #         print("QUERY: ", query)
+    #         return query
+    #     except Exception as e:
+    #         logging.error(f"Error generating query: {e}")
+    #         return ""
 
-    def generate_prompt(self, role, query, guidelines=None, user_profiles=None, context="", history="", disengagement_probability=10):
+    def generate_query(self):
+        try:
+            df = pd.read_excel(EXCEL_FILE_PATH, usecols=[0])  # Read only the first column
+            queries = df.iloc[:, 0].dropna().tolist()  # Convert column values to a list
+            query = random.choice(queries) if queries else ""
+            logging.info(f"Selected Query: {query}")
+            return query
+        except Exception as e:
+            logging.error(f"Error reading Excel file: {e}")
+            return ""
+
+
+    def generate_evaluator_prompt(self, history):
+        prompt = f"""
+        THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
+        You are an evaluator agent tasked with evaluating a parent-child conversation. Follow these strict rules:
+        Primary Hard Rule: Conversation should stop ONLY if the child disengages in AT LEAST THREE separate responses.
+        Other Rule #1: Conversation can stop if the conversation goals are met from the parent's perspective.
+        Other Rule #2: Conversation can stop if the parent and the child come to a mutual agreement to stop.
+        The conversation history so far is as follows:
+        {history}
+
+        Respond in the format:
+        "stop/Very Short 1-line Reasoning why..." or "continue/Very Short 1-line Reasoning why...".
+        Remember, the primary hard rule is to stop ONLY if the child disengages in AT LEAST THREE separate responses. OR if the parent and the child mutually agree to stop the conversation
+        or the conversation goals are met.
+        """
+        return prompt
+
+    def generate_prompt(self, role, child_template, parent_template, query, turn, guidelines=None, user_profiles=None, child_profiles=None, context="", history="", engagement_score=""):
+        if child_profiles is not None and not isinstance(child_profiles, dict):
+            raise TypeError(f"Expected 'child_profiles' to be a dictionary, got {type(child_profiles)} instead.")
+        # Generate parent attributes
         if user_profiles:
-            child_attributes = """age: 14,
-                embarrassment_level: low,
-                parent_child_closeness_level: medium"""
+            parent_attributes = ", ".join(
+                f"{key}: {attr['value']}" for key, attr in user_profiles.items()
+            )
+            attribute_definitions = "\n".join(
+                f"- {key}: {attr['definition']}" for key, attr in user_profiles.items()
+            )
+        else:
+            parent_attributes = "Not specified"
+            attribute_definitions = "Not specified"
+
+        # Generate child attributes
+        if child_profiles:
+            child_attributes = "\n".join(
+                f"- {key}: {attr['value']} ({attr['definition']})" for key, attr in child_profiles.items()
+            )
         else:
             child_attributes = "Not specified"
 
+        context_line = f"Relevant context for this conversation is: {context}." if context else ""
+
+        attributes_line = f"You have the following attributes: \n{parent_attributes}." if user_profiles else ""
+        
+        definitions_line = f"Each attribute is defined as follows: \n{attribute_definitions}." if user_profiles else ""
+        
+        
+        child_line = f"Keep in mind that your child has the following characteristics: {child_attributes}." if child_profiles else ""
+
+        child_attributes_line = f"You are a child responding to what your parent just said. You have the following characteristics: \n{child_attributes}." if child_profiles else "You are a child responding to what your parent just said."
+
+        child_gender_line = f"Your child is {child_template.get('gender', {}).get('value')}."
+        parent_gender_line = f"Your parent is {parent_template.get('role', {}).get('value')}."
+
+
+
         if role == "parent":
-            prompt_template = """
-            You are a parent with the following attributes:
-            {parent_attributes}.
-            Each attribute is defined as follows:
-            {attribute_definitions}.
-            You are continuing a conversation with your child. So far, this has been said: {history}.
-            Relevant context for this conversation is: {rag_context}.
-            Your goal is to discuss the following topic with your child: {query}.
-            Keep in mind that your child has the following characteristics: {child_attributes}.
-            Keep your response realistic, natural, and reflective of how a parent would actually speak to their child.
-            Circle back to the main topic whenever the conversation drifts off course, but limit this to only three times during the discussion.
-            Only provide the response and do not include your thought process behind it.
-            """
+            if not history.strip():
+                prompt_template = f"""
+                THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
+                You are a parent.
+                {attributes_line}
+                {definitions_line}
+                You are beginning a conversation with your child. Your goal is to discuss the following topic with your child: {query}.
+                {child_gender_line}
+                {context_line}
+                {child_line}
+                Keep your response realistic, natural, and reflective of how a parent would actually speak to their child about sexual health.
+                Your responses should not be overly verbose. Keep them concise and natural while not repeating the same thought.
+                Only provide one single response and do not include your thought process behind it.
+                """
+
+            else :
+                prompt_template = f"""
+                THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
+                You are a parent responding to what your child just said.
+                {attributes_line}.
+                {definitions_line}
+                You are continuing a conversation with your child by responding to what they just said. So far, this has been said: {history}.
+                Your goal is to discuss the following topic with your child: {query}.
+                {child_gender_line}
+                {context_line}
+                {child_line}
+                Keep your response realistic, natural, and reflective of how a parent would actually speak to their child about sexual health.
+                Your responses should not be overly verbose. Keep them concise and natural while not repeating the same thought.
+                Circle back to the main topic whenever the conversation drifts off course, but limit this to only three times during the discussion.
+                Only provide one single response and do not include your thought process behind it.
+                """
+
+
+        
         elif role == "child":
-            prompt_template = """
-            You are a child with the following characteristics: {child_attributes}.
-            The conversation has a disengagement probability of {disengagement_probability}%.
-            This means you may feel increasingly disengaged, frustrated, or bored as the conversation continues.
-            If you feel disengaged or uninterested, integrate the word "stop" into your response.
-            Your parent has said the following: {history}.
-            Relevant context for this conversation is: {rag_context}.
-            React concisely like a real teenager would based on your attributes, the nature of the conversation, and the disengagement probability.
-            Use language and tone that reflect a real teenager's response: casual, emotional, and sometimes reactive.
-            Make the teenager's response language that of Generation Alpha.
-            Only provide the response and do not include your thought process behind it.
-            """
+            if (turn < 4):
+                prompt_template = f"""
+                THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
+                {child_attributes_line}
+                {parent_gender_line}
+                Your parent has said the following: {history}.
+                {context_line}
+                Keep your response realistic, natural, and reflective of how a child would actually speak to their parent.
+                Your responses should not be verbose AT ALL. Keep them concise and natural while not repeating the same thought.
+                Make the teenager's response language that of Generation Alpha.
+                In a range from Highly Disengaged (-1) to Highly Engaged (1), the child is {engagement_score}.
+                Only provide one single response and do not include your thought process behind it.
+                """
+            else:
+                prompt_template = f"""
+                THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
+                {child_attributes_line}
+                {parent_gender_line}
+                Your parent has said the following: {history}.
+                {context_line}
+                Keep your response realistic, natural, and reflective of how a child would actually speak to their parent.
+                Your responses should not be verbose AT ALL. Keep them concise and natural while not repeating the same thought.
+                Make the teenager's response language that of Generation Alpha.
+                In a range from Highly Disengaged (-1) to Highly Engaged (1), the child is {engagement_score}.
+                Don't ask any questions. Conclude your conversation with your parent. 
+                Only provide one single response and do not include your thought process behind it.
+                """
+                
 
-        # Build attribute strings
-        attribute_definitions = "\n".join(
-            f"- {key}: {attr['definition']}" for key, attr in (user_profiles or {}).items()
-        )
-        parent_attributes = ", ".join(
-            f"{key}: {attr['value']}" for key, attr in (user_profiles or {}).items()
-        )
+            
 
-        return prompt_template.format(
-            parent_attributes=parent_attributes or "Not specified",
-            attribute_definitions=attribute_definitions or "Not specified",
-            query=query,
-            child_attributes=child_attributes,
-            history=history,
-            rag_context=context,
-            disengagement_probability=disengagement_probability
-        )
+        return prompt_template.strip()
 
 
-    def agents_agree_to_stop(self, parent_response: str, child_response: str) -> bool:
-        stop_keywords = ["let’s stop", "end this", "we're done"]
-        return any(keyword in parent_response.lower() for keyword in stop_keywords) and \
-               any(keyword in child_response.lower() for keyword in stop_keywords)
+    # def agents_agree_to_stop(self, parent_response: str, child_response: str) -> bool:
+    #     stop_keywords = ["let’s stop", "end this", "we're done"]
+    #     return any(keyword in parent_response.lower() for keyword in stop_keywords) and \
+    #            any(keyword in child_response.lower() for keyword in stop_keywords)
 
-    def is_goal_met(self, response: str, goal_keywords: list) -> bool:
-        response_lower = response.lower()
-        return all(keyword.lower() in response_lower for keyword in goal_keywords)
+    # def is_goal_met(self, response: str, goal_keywords: list) -> bool:
+    #     response_lower = response.lower()
+    #     return all(keyword.lower() in response_lower for keyword in goal_keywords)
 
-    def run_variant(self, query, variant_config):
+    def run_variant(self, query, variant_config, child_template=None, parent_template=None):
         context = self.retrieve_context(query) if variant_config.get("context") else ""
+        print(f"Retrieved Context: {context}")
         guidelines = variant_config.get("guidelines")
         user_profiles = variant_config.get("user_profiles")
+        child_profiles = variant_config.get("child_profiles")
 
         parent_history = ""
         child_history = ""
-        goal_keywords = ["safe sex", "consent", "protection"]
-        self.refusals = 0  # Reset refusal count for each variant
+        combined_history = []
+        # goal_keywords = ["safe sex", "consent", "protection"]
 
-        with open("variant_results.txt", "a") as file:  # Append to file for all variants
+        with open("variant_results.txt", "a") as file:
             file.write(f"Starting Variant: {variant_config}\n")
+            
 
             for turn in range(10):  # Max turn limit
                 # Generate parent response
-                parent_prompt = self.generate_prompt("parent", query, guidelines, user_profiles, context, child_history)
-                try:
-                    parent_response = self.parent_agent.invoke(parent_prompt).content.strip()
-                except Exception as e:
-                    logging.error(f"Error generating parent response: {e}")
-                    parent_response = "Error"
-
-                # Write parent response immediately to the file
+                parent_prompt = self.generate_prompt(
+                    "parent",
+                    child_template,
+                    parent_template,
+                    query,
+                    turn,
+                    guidelines=guidelines,
+                    user_profiles=user_profiles,
+                    child_profiles=child_profiles,
+                    context=context,
+                    history="\n".join(combined_history)
+                )
+                parent_response = self.parent_agent.invoke(parent_prompt).content.strip()
                 file.write(f"**** Parent:\n{parent_response}\n\n")
-
-                # Update parent history
                 parent_history += f"Parent: {parent_response}\n"
+                combined_history.append(f"Parent: {parent_response}")
 
                 # Generate child response
-                child_prompt = self.generate_prompt("child", query, guidelines, user_profiles, context, parent_history, disengagement_probability=self.disengagement_probability)
-                try:
-                    child_response = self.child_agent.invoke(child_prompt).content.strip()
-                except Exception as e:
-                    logging.error(f"Error generating child response: {e}")
-                    child_response = "Error"
+                child_prompt = self.generate_prompt(
+                    "child",
+                    child_template,
+                    parent_template,
+                    query,
+                    turn,
+                    guidelines=guidelines,
+                    user_profiles=None,  # No user_profiles for child
+                    child_profiles=child_profiles,  # Pass child_profiles explicitly
+                    context=context,
+                    history="\n".join(combined_history),
+                    engagement_score=self.engagement_score
+                )
 
-                # Write child response immediately to the file
+                child_response = self.child_agent.invoke(child_prompt).content.strip()
                 file.write(f"**** Child:\n{child_response}\n\n")
-
-                # Update child history
                 child_history += f"Child: {child_response}\n"
+                combined_history.append(f"Child: {child_response}")
 
-                # Check stopping conditions
-                if "stop" in child_response.lower():
-                    self.refusals += 1
-                    logging.info(f"Child disengaged. Refusals count: {self.refusals}")
-                    if self.refusals >= 3:
-                        file.write("\nConversation ended due to three refusals from the child.\n")
-                        logging.info("Stopping conversation due to three refusals from the child.")
-                        break
+                # Evaluate with the third agent
+                history_for_evaluator = "\n".join(combined_history)
+                evaluator_prompt = self.generate_evaluator_prompt(history_for_evaluator)
+                evaluator_response = self.evaluator_agent.invoke(evaluator_prompt).content.strip()
+                
 
-                if self.is_goal_met(child_response, goal_keywords):
-                    file.write("\nConversation ended due to goal achievement.\n")
-                    logging.info("Goal achieved. Stopping conversation.")
+                # Check evaluator decision
+                if evaluator_response.startswith("stop"):
+                    file.write(f"**** Evaluator Decision:\n{evaluator_response}\n\n")
+                    reasoning = evaluator_response.split("/", 1)[1]
+                    file.write(f"\nConversation ended by evaluator. Reason: {reasoning}\n")
                     break
-
-                if self.agents_agree_to_stop(parent_response, child_response):
-                    file.write("\nConversation ended by mutual agreement.\n")
-                    logging.info("Both agents agreed to stop the conversation.")
+                elif evaluator_response.startswith("continue"):
+                    logging.info("Evaluator decided to continue the conversation.")
+                else:
+                    logging.error(f"Unexpected evaluator response: {evaluator_response}")
                     break
 
                 # Increment disengagement probability
-                self.disengagement_probability += random.randint(5, 10)
-                logging.info(f"Incremented disengagement probability to {self.disengagement_probability}%")
+                # self.disengagement_probability += random.randint(5, 10)
+                # logging.info(f"Incremented disengagement probability to {self.disengagement_probability}%")
 
             file.write("\nConversation ended.\n\n")
 
-        return parent_history + child_history
+        return "\n".join(combined_history)
 
 
 
-    def execute_variants(self, query, variants, output_file="variant_results.txt"):
-        results = {}
-        with open(output_file, "w") as file:  # Open in write mode to clear previous content
-            for variant_name, config in variants.items():
+    # def execute_variants(self, query, variants, child_template=None, parent_template=None, output_file="variant_results.txt"):
+    #     results = {}
+    #     with open(output_file, "w") as file:  # Open in write mode to clear previous content
+    #         for variant_name, config in variants.items():
                 
-                # Reset refusal count before starting a new variant
-                self.refusals = 0  
-                self.disengagement_probability = 50  # Reset disengagement probability as well
+    #             # Reset refusal count before starting a new variant
+    #             self.refusals = 0  
+    #             # self.disengagement_probability = 50  # Reset disengagement probability as well
             
-                interaction = self.run_variant(query, config)
-                results[variant_name] = interaction
+    #             interaction = self.run_variant(query, config, child_template, parent_template)
+    #             results[variant_name] = interaction
 
-        return results
+    #     return results
+    
+
+    def execute_variants(self, query, variants, child_template=None, parent_template=None, output_csv="variant_results.csv", iterations=1):
+        results_rows = []
+        for i in range(iterations):
+            iteration_results = {"Iteration": i + 1}
+            for variant_name, config in variants.items():
+                # Reset refusal count for each variant in this iteration
+                self.refusals = 0  
+                interaction = self.run_variant(query, config, child_template, parent_template)
+                iteration_results[f"{variant_name} Transcript"] = interaction
+                # If a child_profiles value is provided in the config, save the child_template (assumed to be randomized)
+                if config.get("child_profiles") is not None:
+                    iteration_results[f"{variant_name} Child Attributes"] = str(child_template)
+                else:
+                    iteration_results[f"{variant_name} Child Attributes"] = ""
+                if config.get("user_profiles") is not None:
+                    iteration_results[f"{variant_name} Parent Attributes"] = str(parent_template)
+                else:
+                    iteration_results[f"{variant_name} Parent Attributes"] = ""
+            results_rows.append(iteration_results)
+        import pandas as pd
+        df = pd.DataFrame(results_rows)
+        df.to_csv(output_csv, index=False)
+        return results_rows
+
+    
+
 
 
 def main():
@@ -193,66 +357,147 @@ def main():
         storage_context = StorageContext.from_defaults(persist_dir=index_file)
         index = load_index_from_storage(storage_context)
 
-    generator = VariantGenerator(api_key, base_url, index=index)
+    # random_engagement_score = round(random.uniform(-1, 1), 1)
+    
 
+    definitions = ["Highly Engaged (1). This means that the child is very enthusiastic, actively participates in the conversation.",
+                   "Moderately Engaged (0.5). This means that the child shows a fair amount of interest, responds to questions, and contributes to the discussion but may not always reciprocate the energy.",
+                   "Neutral (0). This means that the child is neither particularly interested nor disengaged, responding when prompted but not initiating much on their own.",
+                   "Moderately Disengaged (-0.5). This means that the child shows reluctance to engage, giving short or minimal responses and displaying little interest in continuing the conversation.",
+                   "Highly Disengaged (-1). This means that the child is completely uninterested, avoids responding, and may actively try to end or leave the conversation."]
+    
+    random_engagement_score = random.choice(definitions)
+    # random_engagement_score = "Highly Disengaged (-1). This means that the child is completely uninterested, avoids responding, and may actively try to end or leave the conversation."
+
+    # random_engagement_score = -0.8
+
+    generator = VariantGenerator(api_key, base_url, index=index, engagement_score=random_engagement_score)
+    logging.info(f"Engagement Score set to {random_engagement_score}% for all variants.")
+
+
+   
+
+    def randomize_attributes(attributes, is_parent=False):
+        """
+        Randomizes the values for each attribute in the given dictionary
+        and adds parent-specific or child-specific fields as needed.
+        """
+        # Ensure attributes remain a dictionary and are updated in place
+        randomized_attributes = {}
+
+        for key, attr in attributes.items():
+            # Randomize 'value' field
+            if key == "age":  # Special case for numerical values
+                randomized_attributes[key] = {
+                    "value": str(random.randint(10, 13)),  # Age range for a teenager
+                    "definition": attr["definition"]
+                }
+            else:
+                randomized_attributes[key] = {
+                    "value": random.choice(["low", "medium", "high"]),
+                    "definition": attr["definition"]
+                }
+
+        # if is_parent:
+        #     # Add a random parent role (mother or father)
+        #     randomized_attributes["role"] = {
+        #         "value": random.choice(["mother", "father"]),
+        #         "definition": "The role of the parent in the family."
+        #     }
+        # else:
+        #     # Add a random child gender (male, female, non-binary)
+        #     randomized_attributes["gender"] = {
+        #         "value": random.choice(["male", "female", "non-binary"]),
+        #         "definition": "The gender identity of the child."
+        #     }
+
+        return randomized_attributes
+
+
+
+    # Generate randomized profiles for the parent and child
+    user_profiles = randomize_attributes(parent_template, True)
+    child_profiles =  randomize_attributes(child_template, False)
+
+    # query = generator.generate_query()
+    query = "Virginity"
+    if not query:
+        logging.error("No query retrieved from Excel. Exiting.")
+        return
+
+    """
+    Guidelines: This is what would go into the prompt for the variants that have it enabled:
+
+    Follow these guidelines while framing your response.
+
+    Share information that matches your child’s age and understanding level.
+    Keep responses short and simple for younger kids; older kids may need more depth.
+    Focus on one topic at a time since too many topics can be overwhelming.
+    Use concrete examples for younger kids and more abstract discussions for older ones.
+
+    Ask open-ended questions to encourage discussion.
+    Avoid jumping to conclusions about why your child is asking something. 
+    Keep answers brief and clear, explaining any new words they may not know.
+    Check their understanding by asking follow up questions.
+    
+    """
     variants = {
-        "Variant 1 - Basic": {"context": False, "guidelines": None, "user_profiles": None},
-        "Variant 2 - Query + Reddit Context": {"context": True, "guidelines": None, "user_profiles": None},
+        "Variant 1 - Basic": {"context": False, "guidelines": None, "user_profiles": None, "child_profiles": None},
+        "Variant 2 - Query + Reddit Context": {"context": True, "guidelines": None, "user_profiles": None, "child_profiles": None},
         "Variant 3 - Query + Guidelines": {
             "context": False,
-            "guidelines": "Respond concisely, empathetically, and adhere to constraints.",
-            "user_profiles": None
+            "guidelines": """Follow these guidelines while framing your response.
+                            Don’t jump to conclusions about why they’re asking what they’re asking. ((For example, you can say: “Can you tell me what you already know about that?” or “What have you heard about that?” ))
+                            Keep your answers short and simple, and explain new words that your kid might not have heard before.
+                            Check their understanding. ((After answering a question for example, you can ask, “Does that answer your question?” or “What do you think about that?))""",
+            "user_profiles": None,
+            "child_profiles": None
         },
         "Variant 4 - Query + User Profiles": {
             "context": False,
             "guidelines": None,
-            "user_profiles": {
-                "confidence_level": {"value": "medium", "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with child."},
-                "triggers": {"value": ["disrespect"], "definition": "A trigger will cause the parent to react negatively and maybe even derail the conversation."},
-                "comfort_level": {"value": "medium", "definition": "Degree of parent’s comfort or ease about conversations surrounding sexuality"},
-                "open_dialogue": {"value": "medium", "definition": "Degree to which parent engages in a direct and positive dialogue, as opposed to a closed and one-sided lecture"}
-            }
+            "user_profiles": user_profiles,
+            "child_profiles": child_profiles
         },
         "Variant 5 - Query + Context + Guidelines": {
             "context": True,
-            "guidelines": "Respond concisely, empathetically, and adhere to constraints.",
-            "user_profiles": None
+            "guidelines": """Follow these guidelines while framing your response.
+                            Don’t jump to conclusions about why they’re asking what they’re asking. ((For example, you can say: “Can you tell me what you already know about that?” or “What have you heard about that?” ))
+                            Keep your answers short and simple, and explain new words that your kid might not have heard before.
+                            Check their understanding. ((After answering a question for example, you can ask, “Does that answer your question?” or “What do you think about that?))""",
+            "user_profiles": None,
+            "child_profiles": None
         },
         "Variant 6 - Query + Context + User Profiles": {
             "context": True,
             "guidelines": None,
-            "user_profiles": {
-                "confidence_level": {"value": "medium", "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with child."},
-                "triggers": {"value": ["disrespect"], "definition": "A trigger will cause the parent to react negatively and maybe even derail the conversation."},
-                "comfort_level": {"value": "medium", "definition": "Degree of parent’s comfort or ease about conversations surrounding sexuality"},
-                "open_dialogue": {"value": "medium", "definition": "Degree to which parent engages in a direct and positive dialogue, as opposed to a closed and one-sided lecture"}
-            }
+            "user_profiles": user_profiles,
+            "child_profiles": child_profiles
         },
         "Variant 7 - Query + Guidelines + User Profiles": {
             "context": False,
-            "guidelines": "Respond concisely, empathetically, and adhere to constraints.",
-            "user_profiles": {
-                "confidence_level": {"value": "medium", "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with child."},
-                "triggers": {"value": ["disrespect"], "definition": "A trigger will cause the parent to react negatively and maybe even derail the conversation."},
-                "comfort_level": {"value": "medium", "definition": "Degree of parent’s comfort or ease about conversations surrounding sexuality"},
-                "open_dialogue": {"value": "medium", "definition": "Degree to which parent engages in a direct and positive dialogue, as opposed to a closed and one-sided lecture"}
-            }
+            "guidelines": """Follow these guidelines while framing your response.
+                            Don’t jump to conclusions about why they’re asking what they’re asking. ((For example, you can say: “Can you tell me what you already know about that?” or “What have you heard about that?” ))
+                            Keep your answers short and simple, and explain new words that your kid might not have heard before.
+                            Check their understanding. ((After answering a question for example, you can ask, “Does that answer your question?” or “What do you think about that?))""",
+            "user_profiles": user_profiles,
+            "child_profiles": child_profiles
         },
         "Variant 8 - Query + Context + Guidelines + User Profiles": {
             "context": True,
-            "guidelines": "Respond concisely, empathetically, and adhere to constraints.",
-            "user_profiles": {
-                "confidence_level": {"value": "medium", "definition": "Degree of self-efficacy (i.e., confidence) in ability to effectively communicate with child."},
-                "triggers": {"value": ["disrespect"], "definition": "A trigger will cause the parent to react negatively and maybe even derail the conversation."},
-                "comfort_level": {"value": "medium", "definition": "Degree of parent’s comfort or ease about conversations surrounding sexuality"},
-                "open_dialogue": {"value": "medium", "definition": "Degree to which parent engages in a direct and positive dialogue, as opposed to a closed and one-sided lecture"}
-            }
+            "guidelines": """Follow these guidelines while framing your response.
+                            Don’t jump to conclusions about why they’re asking what they’re asking. ((For example, you can say: “Can you tell me what you already know about that?” or “What have you heard about that?” ))
+                            Keep your answers short and simple, and explain new words that your kid might not have heard before.
+                            Check their understanding. ((After answering a question for example, you can ask, “Does that answer your question?” or “What do you think about that?))""",
+            "user_profiles": user_profiles,
+            "child_profiles": child_profiles
         }
     }
 
-    query = "You are turning 15 soon, and I want to talk to you about safe sex."
     output_file = "variant_results.txt"
-    generator.execute_variants(query, variants, output_file=output_file)
+    # generator.execute_variants(query, variants, child_template, parent_template, output_file=output_file)
+    generator.execute_variants(query, variants, child_template, parent_template, output_csv="variant_results.csv", iterations=10)
+
 
     logging.info("Variant generation completed. Results saved to file.")
 

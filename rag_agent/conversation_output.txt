@@ -1,24 +1,5 @@
-Starting Conversation ID: conv-20250123202851
+Starting Conversation ID: conv-20250130212400
 
 **** Parent:
-Hey sweetie, since you're turning 15 soon, I think it's a good time for us to have a chat about safe sex. It's a big topic that covers not just preventing pregnancy and diseases, but also about having healthy and respectful relationships. It's okay if it feels a bit awkward to talk about, but I want to make sure you have all the information you need and feel comfortable coming to me with any questions. What do you think?
+Hey sweetie, with your 15th birthday coming up, I think it's a good time for us to chat about some grown-up stuff like safe sex. I know it might feel a bit awkward, but it's really important and I want to make sure you have all the information you need. Just remember that I'm here to answer any questions you have, okay?
 
-**** Child:
-Ugh, I mean, okay, I guess we can talk about it. But, like, just so you know, I'm not even thinking about that stuff right now. Let's just get this over with, but can we stop if it gets too weird?
-
-**** Parent:
-Absolutely, we can stop whenever you need to. It's really important to me that you feel comfortable. I'm glad you're willing to chat about it even though it's not on your mind right now. I just want you to have the right information for when you do start thinking about it. So, let's start with the basics. Do you know about consent and why it's key in any kind of relationship?
-
-**** Child:
-Yeah, I know about consent. It's like making sure everyone's cool with what's happening, right? I don't know why we're talking about this now, but whatever. So, can we just stop after this? It's kinda awkward.
-
-**** Parent:
-I hear you, and we can wrap this up soon—it's okay to feel awkward. You've got the right idea about consent; it's all about everyone being okay with what's happening. It's something that applies now and in the future, no matter who you're with or what situation you're in. Whether it's borrowing something or personal space, it's about respect. Can I tell you a bit more about situations where consent is really important, or do you have any specific questions on your mind?
-
-**** Child:
-Ugh, I guess you can tell me a bit more, but can we please keep it short? I don't really have questions, it's just... yeah, awkward. Can we just stop soon?
-
-
-Conversation ended due to three refusals from the child.
-
-Conversation ended.
