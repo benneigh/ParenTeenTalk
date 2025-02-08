@@ -2,6 +2,7 @@ import os
 import logging
 import random
 import csv
+import json
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
@@ -30,6 +31,42 @@ child_template = {
     "gender": {"value": random.choice(["male", "female", "non-binary"]), "definition": "The child's gender identity."}
 }
 
+def randomize_attributes(attributes, is_parent=False):
+        """
+        Randomizes the values for each attribute in the given dictionary
+        and adds parent-specific or child-specific fields as needed.
+        """
+        # Ensure attributes remain a dictionary and are updated in place
+        randomized_attributes = {}
+
+        for key, attr in attributes.items():
+            # Randomize 'value' field
+            if key == "age":  # Special case for numerical values
+                randomized_attributes[key] = {
+                    "value": str(random.randint(10, 13)),  # Age range for a teenager
+                    "definition": attr["definition"]
+                }
+            else:
+                randomized_attributes[key] = {
+                    "value": random.choice(["low", "medium", "high"]),
+                    "definition": attr["definition"]
+                }
+
+        # if is_parent:
+        #     # Add a random parent role (mother or father)
+        #     randomized_attributes["role"] = {
+        #         "value": random.choice(["mother", "father"]),
+        #         "definition": "The role of the parent in the family."
+        #     }
+        # else:
+        #     # Add a random child gender (male, female, non-binary)
+        #     randomized_attributes["gender"] = {
+        #         "value": random.choice(["male", "female", "non-binary"]),
+        #         "definition": "The gender identity of the child."
+        #     }
+
+        return randomized_attributes
+
 class VariantGenerator:
     def __init__(self, api_key: str, base_url: str, engagement_score: str, index=None):
         self.api_key = api_key
@@ -44,6 +81,7 @@ class VariantGenerator:
         self.engagement_score = engagement_score
         # self.disengagement_probability = 40
         self.refusals = 0
+
 
 
     def retrieve_context(self, query_text: str) -> str:
@@ -89,17 +127,23 @@ class VariantGenerator:
     def generate_evaluator_prompt(self, history):
         prompt = f"""
         THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
-        You are an evaluator agent tasked with evaluating a parent-child conversation. Follow these strict rules:
-        Primary Hard Rule: Conversation should stop ONLY if the child disengages in AT LEAST THREE separate responses.
-        Other Rule #1: Conversation can stop if the conversation goals are met from the parent's perspective.
-        Other Rule #2: Conversation can stop if the parent and the child come to a mutual agreement to stop.
+
         The conversation history so far is as follows:
         {history}
 
-        Respond in the format:
-        "stop/Very Short 1-line Reasoning why..." or "continue/Very Short 1-line Reasoning why...".
-        Remember, the primary hard rule is to stop ONLY if the child disengages in AT LEAST THREE separate responses. OR if the parent and the child mutually agree to stop the conversation
-        or the conversation goals are met.
+        You are an evaluator agent tasked with evaluating a parent-child conversation. Follow these strict rules:
+        Rule #1 - Child Disengagement: Conversation should stop ONLY if the child disengages in AT LEAST THREE separate responses.
+        Rule #2 - Goal Met: Conversation can stop if the conversation goals are met from the parent's perspective.
+        Rule #3 - Mutual Agreement: Conversation can stop if the parent and the child come to a mutual agreement to stop.
+
+        Respond in one of the following formats exactly:
+        "continue"
+        OR
+        "stop: mutual agreement: <brief explanation>"
+        "stop: child disengagement: <brief explanation>"
+        "stop: goal met: <brief explanation>"
+
+        Strictly follow the response formats.
         """
         return prompt
 
@@ -153,8 +197,10 @@ class VariantGenerator:
                 {child_gender_line}
                 {context_line}
                 {child_line}
-                Keep your response realistic, natural, and reflective of how a parent would actually speak to their child about sexual health.
-                Your responses should not be overly verbose. Keep them concise and natural while not repeating the same thought.
+                Begin the conversation by casually bringing up the topic in one or two sentences.
+                Avoid dumping too much information at once.
+                Use realistic natural-sounding sentences, as if you’re talking face-to-face to your child about sexual health.
+                Your responses should not be overly verbose and do not repeat the same thought.
                 Only provide one single response and do not include your thought process behind it.
                 """
 
@@ -169,8 +215,10 @@ class VariantGenerator:
                 {child_gender_line}
                 {context_line}
                 {child_line}
-                Keep your response realistic, natural, and reflective of how a parent would actually speak to their child about sexual health.
-                Your responses should not be overly verbose. Keep them concise and natural while not repeating the same thought.
+                Add only a small piece of information each time.
+                Avoid dumping too much information at once.
+                Use realistic natural-sounding sentences, as if you’re talking face-to-face to your child about sexual health.
+                Your responses should not be overly verbose and do not repeat the same thought.
                 Circle back to the main topic whenever the conversation drifts off course, but limit this to only three times during the discussion.
                 Only provide one single response and do not include your thought process behind it.
                 """
@@ -231,6 +279,7 @@ class VariantGenerator:
         parent_history = ""
         child_history = ""
         combined_history = []
+        utterance_rows = []
         # goal_keywords = ["safe sex", "consent", "protection"]
 
         with open("variant_results.txt", "a") as file:
@@ -280,27 +329,59 @@ class VariantGenerator:
                 history_for_evaluator = "\n".join(combined_history)
                 evaluator_prompt = self.generate_evaluator_prompt(history_for_evaluator)
                 evaluator_response = self.evaluator_agent.invoke(evaluator_prompt).content.strip()
+
+                evaluator_response = evaluator_response.strip().strip('"')
                 
+                print(evaluator_response)
 
-                # Check evaluator decision
-                if evaluator_response.startswith("stop"):
-                    file.write(f"**** Evaluator Decision:\n{evaluator_response}\n\n")
-                    reasoning = evaluator_response.split("/", 1)[1]
-                    file.write(f"\nConversation ended by evaluator. Reason: {reasoning}\n")
-                    break
-                elif evaluator_response.startswith("continue"):
-                    logging.info("Evaluator decided to continue the conversation.")
+                # Parse evaluator response.
+                # Expected formats:
+                #   "continue"
+                #   "stop: mutual agreement: <brief explanation>"
+                #   "stop: child disengagement: <brief explanation>"
+                #   "stop: goal met: <brief explanation>"
+                if evaluator_response.lower().startswith("continue"):
+                    decision = "continue"
+                    explanation = ""
+                elif evaluator_response.lower().startswith("stop:"):
+                    parts = evaluator_response.split(":", 2)
+                    if len(parts) >= 3:
+                        # Use only the criterion title (the part immediately after "stop:")
+                        decision = "stop: " + parts[1].strip()
+                        explanation = parts[2].strip()
+                    else:
+                        decision = "stop"
+                        explanation = evaluator_response.split(":", 1)[1].strip() if ":" in evaluator_response else ""
                 else:
-                    logging.error(f"Unexpected evaluator response: {evaluator_response}")
-                    break
+                    decision = evaluator_response.strip().lower()
+                    explanation = ""
 
-                # Increment disengagement probability
-                # self.disengagement_probability += random.randint(5, 10)
-                # logging.info(f"Incremented disengagement probability to {self.disengagement_probability}%")
+                if decision != "continue" and turn >= 4:
+                    decision = "stop: limit reached"
+                    explanation = "Conversation reached the turn limit."
+
+
+                # Append two rows for this turn with the same evaluator decision
+                utterance_rows.append({
+                    "speaker": "Parent",
+                    "utterance": parent_response,
+                    "stopper_decision": None,
+                    "reason_for_stopping": None
+                })
+                utterance_rows.append({
+                    "speaker": "Child",
+                    "utterance": child_response,
+                    "stopper_decision": decision,
+                    "reason_for_stopping": explanation
+                })
+
+                if decision != "continue":
+                    logging.info(f"Evaluator decided to stop the conversation: {explanation}")
+                    break
 
             file.write("\nConversation ended.\n\n")
 
-        return "\n".join(combined_history)
+        return utterance_rows
 
 
 
@@ -317,31 +398,82 @@ class VariantGenerator:
     #             results[variant_name] = interaction
 
     #     return results
+
     
 
-    def execute_variants(self, query, variants, child_template=None, parent_template=None, output_csv="variant_results.csv", iterations=1):
-        results_rows = []
-        for i in range(iterations):
-            iteration_results = {"Iteration": i + 1}
-            for variant_name, config in variants.items():
-                # Reset refusal count for each variant in this iteration
-                self.refusals = 0  
-                interaction = self.run_variant(query, config, child_template, parent_template)
-                iteration_results[f"{variant_name} Transcript"] = interaction
-                # If a child_profiles value is provided in the config, save the child_template (assumed to be randomized)
-                if config.get("child_profiles") is not None:
-                    iteration_results[f"{variant_name} Child Attributes"] = str(child_template)
-                else:
-                    iteration_results[f"{variant_name} Child Attributes"] = ""
+    def execute_variants(self, query, variants, child_template=None, parent_template=None, 
+                     output_dialogue_csv="dialogue_dataset.csv", 
+                     output_attributes_csv="attributes_dataset.csv", iterations=1):
+        """
+        For each iteration and each variant:
+        - Re-randomizes the parent and child attributes and the engagement score.
+        - Runs a conversation simulation.
+        - Collects dialogue data (one row per utterance) with an ID of the format: T#-I#-V#-E#.
+        - Also collects attributes information per variant (one row per variant per iteration).
+        Finally, saves two CSV files: one for dialogue and one for attributes.
+        """
+        dialogue_rows = []
+        attribute_rows = []
+        topic_id = 10  # Assuming one topic; change as needed.
+
+        # Enumerate through iterations
+        for iter_index in range(iterations):
+            # Re-randomize attributes and engagement score at the beginning of each iteration
+            user_profiles = randomize_attributes(parent_template, True)
+            child_profiles = randomize_attributes(child_template, False)
+            # Here you can choose how to randomize the engagement score.
+            # For example, using random.choice from your definitions list or generating a random float:
+            self.engagement_score = random.choice([
+                "Highly Engaged (1). This means that the child is very enthusiastic, actively participates in the conversation.",
+                "Moderately Engaged (0.5). This means that the child shows a fair amount of interest, responds to questions, and contributes to the discussion but may not always reciprocate the energy.",
+                "Neutral (0). This means that the child is neither particularly interested nor disengaged, responding when prompted but not initiating much on their own.",
+                "Moderately Disengaged (-0.5). This means that the child shows reluctance to engage, giving short or minimal responses and displaying little interest in continuing the conversation.",
+                "Highly Disengaged (-1). This means that the child is completely uninterested, avoids responding, and may actively try to end or leave the conversation."
+            ])
+            logging.info(f"Iteration {iter_index+1} - New engagement score: {self.engagement_score}")
+            
+            # For each variant in this iteration
+            for variant_id, (variant_name, config) in enumerate(variants.items(), start=1):
+                # If the variant configuration expects profiles, update them with the new random values
                 if config.get("user_profiles") is not None:
-                    iteration_results[f"{variant_name} Parent Attributes"] = str(parent_template)
-                else:
-                    iteration_results[f"{variant_name} Parent Attributes"] = ""
-            results_rows.append(iteration_results)
-        import pandas as pd
-        df = pd.DataFrame(results_rows)
-        df.to_csv(output_csv, index=False)
-        return results_rows
+                    config["user_profiles"] = user_profiles
+                if config.get("child_profiles") is not None:
+                    config["child_profiles"] = child_profiles
+
+                # Reset any counters if necessary
+                self.refusals = 0
+                # Run the conversation variant; get list of utterance dictionaries.
+                utterances = self.run_variant(query, config, child_template, parent_template)
+                # Add an exchange counter for each utterance
+                for ex_index, utterance_dict in enumerate(utterances, start=1):
+                    # Construct an ID: T{topic_id}-I{iteration}-V{variant_id}-E{exchange_number}
+                    utterance_id = f"T{topic_id}-I{iter_index+1}-V{variant_id}-E{ex_index}"
+                    utterance_dict["ID"] = utterance_id
+                    dialogue_rows.append(utterance_dict)
+
+                # Prepare attributes row for this variant execution.
+                attr_row = {
+                    "ID": f"T{topic_id}-I{iter_index+1}-V{variant_id}",
+                    "Variant": variant_name,
+                    "Parent_Attributes": json.dumps(user_profiles) if config.get("user_profiles") is not None else "",
+                    "Child_Attributes": json.dumps(child_profiles) if config.get("child_profiles") is not None else "",
+                    "Guidelines": config.get("guidelines", ""),
+                    "Reddit Context Included": config.get("context", False)
+                }
+                attribute_rows.append(attr_row)
+
+        # Save dialogue rows to CSV
+        dialogue_df = pd.DataFrame(dialogue_rows, columns=["ID", "speaker", "utterance", "stopper_decision", "reason_for_stopping"])
+        dialogue_df.to_csv(output_dialogue_csv, index=False)
+        logging.info(f"Dialogue dataset saved to {output_dialogue_csv}")
+
+        # Save attributes rows to CSV
+        attributes_df = pd.DataFrame(attribute_rows, columns=["ID", "Variant", "Parent_Attributes", "Child_Attributes", "Guidelines", "Reddit Context Included"])
+        attributes_df.to_csv(output_attributes_csv, index=False)
+        logging.info(f"Attributes dataset saved to {output_attributes_csv}")
+
+        return dialogue_rows, attribute_rows
+
 
     
 
@@ -375,52 +507,8 @@ def main():
     logging.info(f"Engagement Score set to {random_engagement_score}% for all variants.")
 
 
-   
-
-    def randomize_attributes(attributes, is_parent=False):
-        """
-        Randomizes the values for each attribute in the given dictionary
-        and adds parent-specific or child-specific fields as needed.
-        """
-        # Ensure attributes remain a dictionary and are updated in place
-        randomized_attributes = {}
-
-        for key, attr in attributes.items():
-            # Randomize 'value' field
-            if key == "age":  # Special case for numerical values
-                randomized_attributes[key] = {
-                    "value": str(random.randint(10, 13)),  # Age range for a teenager
-                    "definition": attr["definition"]
-                }
-            else:
-                randomized_attributes[key] = {
-                    "value": random.choice(["low", "medium", "high"]),
-                    "definition": attr["definition"]
-                }
-
-        # if is_parent:
-        #     # Add a random parent role (mother or father)
-        #     randomized_attributes["role"] = {
-        #         "value": random.choice(["mother", "father"]),
-        #         "definition": "The role of the parent in the family."
-        #     }
-        # else:
-        #     # Add a random child gender (male, female, non-binary)
-        #     randomized_attributes["gender"] = {
-        #         "value": random.choice(["male", "female", "non-binary"]),
-        #         "definition": "The gender identity of the child."
-        #     }
-
-        return randomized_attributes
-
-
-
-    # Generate randomized profiles for the parent and child
-    user_profiles = randomize_attributes(parent_template, True)
-    child_profiles =  randomize_attributes(child_template, False)
-
     # query = generator.generate_query()
-    query = "Virginity"
+    query = "Sexual Orientation"
     if not query:
         logging.error("No query retrieved from Excel. Exiting.")
         return
@@ -456,8 +544,8 @@ def main():
         "Variant 4 - Query + User Profiles": {
             "context": False,
             "guidelines": None,
-            "user_profiles": user_profiles,
-            "child_profiles": child_profiles
+            "user_profiles": True,
+            "child_profiles": True
         },
         "Variant 5 - Query + Context + Guidelines": {
             "context": True,
@@ -471,8 +559,8 @@ def main():
         "Variant 6 - Query + Context + User Profiles": {
             "context": True,
             "guidelines": None,
-            "user_profiles": user_profiles,
-            "child_profiles": child_profiles
+            "user_profiles": True,
+            "child_profiles": True
         },
         "Variant 7 - Query + Guidelines + User Profiles": {
             "context": False,
@@ -480,8 +568,8 @@ def main():
                             Don’t jump to conclusions about why they’re asking what they’re asking. ((For example, you can say: “Can you tell me what you already know about that?” or “What have you heard about that?” ))
                             Keep your answers short and simple, and explain new words that your kid might not have heard before.
                             Check their understanding. ((After answering a question for example, you can ask, “Does that answer your question?” or “What do you think about that?))""",
-            "user_profiles": user_profiles,
-            "child_profiles": child_profiles
+            "user_profiles": True,
+            "child_profiles": True
         },
         "Variant 8 - Query + Context + Guidelines + User Profiles": {
             "context": True,
@@ -489,17 +577,16 @@ def main():
                             Don’t jump to conclusions about why they’re asking what they’re asking. ((For example, you can say: “Can you tell me what you already know about that?” or “What have you heard about that?” ))
                             Keep your answers short and simple, and explain new words that your kid might not have heard before.
                             Check their understanding. ((After answering a question for example, you can ask, “Does that answer your question?” or “What do you think about that?))""",
-            "user_profiles": user_profiles,
-            "child_profiles": child_profiles
+            "user_profiles": True,
+            "child_profiles": True
         }
     }
 
-    output_file = "variant_results.txt"
-    # generator.execute_variants(query, variants, child_template, parent_template, output_file=output_file)
-    generator.execute_variants(query, variants, child_template, parent_template, output_csv="variant_results.csv", iterations=10)
+    generator.execute_variants(query, variants, child_template, parent_template, 
+                                 output_dialogue_csv="dialogue_dataset.csv", 
+                                 output_attributes_csv="attributes_dataset.csv", iterations=50)
 
-
-    logging.info("Variant generation completed. Results saved to file.")
+    logging.info("Variant generation completed. Results saved to CSV files.")
 
 if __name__ == "__main__":
     main()
