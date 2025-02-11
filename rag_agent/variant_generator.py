@@ -4,6 +4,7 @@ import random
 import csv
 import json
 import pandas as pd
+import numpy as np
 from datetime import datetime
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -26,10 +27,14 @@ parent_template = {
 
 child_template = {
     "age": {"value": "13", "definition": "Chronological age of child used as an indicator of pubertal status and readiness for conversations of different depth (more depth as child gets older) and breadth (more breadth as child gets older)"},
-    "embarrassment_level": {"value": "low", "definition": "Degree of child’s discomfort or unease about conversations surrounding sexuality that may prevent open dialogue"},
     "parent_child_closeness_level": {"value": "medium", "definition": "Degree of closeness and comfort with parent."},
-    "gender": {"value": random.choice(["male", "female", "non-binary"]), "definition": "The child's gender identity."}
+    "gender": {
+        "value": np.random.choice(["Male", "Female", "Transgender/Gender Diverse"], p=[0.485, 0.485, 0.03]),
+        "definition": "The child's gender identity."
+    }
 }
+
+
 
 def randomize_attributes(attributes, is_parent=False):
         """
@@ -46,6 +51,13 @@ def randomize_attributes(attributes, is_parent=False):
                     "value": str(random.randint(10, 13)),  # Age range for a teenager
                     "definition": attr["definition"]
                 }
+
+            elif key == "role" or key == "gender":
+                randomized_attributes[key] = {
+                    "value": attr["value"],
+                    "definition": attr["definition"]
+                }
+
             else:
                 randomized_attributes[key] = {
                     "value": random.choice(["low", "medium", "high"]),
@@ -199,9 +211,11 @@ class VariantGenerator:
                 {child_line}
                 Begin the conversation by casually bringing up the topic in one or two sentences.
                 Avoid dumping too much information at once.
-                Use realistic natural-sounding sentences, as if you’re talking face-to-face to your child about sexual health.
-                Your responses should not be overly verbose and do not repeat the same thought.
+                This conversation should be within the broader topic of sexual health.
+                Speak in a **natural, everyday tone**, as if you’re talking face-to-face to your child. Avoid formal language.
+                Your responses **should not be verbose** and should not repeat the same thought.
                 Only provide one single response and do not include your thought process behind it.
+                **Do not** prepend “Parent:” or any speaker labels to your lines.
                 """
 
             else :
@@ -217,10 +231,11 @@ class VariantGenerator:
                 {child_line}
                 Add only a small piece of information each time.
                 Avoid dumping too much information at once.
-                Use realistic natural-sounding sentences, as if you’re talking face-to-face to your child about sexual health.
-                Your responses should not be overly verbose and do not repeat the same thought.
+                Speak in a **natural, everyday tone**, as if you’re talking face-to-face to your child. Avoid formal language.
+                Your responses **should not be verbose** and should not repeat the same thought.
                 Circle back to the main topic whenever the conversation drifts off course, but limit this to only three times during the discussion.
                 Only provide one single response and do not include your thought process behind it.
+                **Do not** prepend “Parent:” or any speaker labels to your lines.
                 """
 
 
@@ -238,6 +253,7 @@ class VariantGenerator:
                 Make the teenager's response language that of Generation Alpha.
                 In a range from Highly Disengaged (-1) to Highly Engaged (1), the child is {engagement_score}.
                 Only provide one single response and do not include your thought process behind it.
+                **Do not** prepend “Child:” or any speaker labels to your lines.
                 """
             else:
                 prompt_template = f"""
@@ -252,6 +268,7 @@ class VariantGenerator:
                 In a range from Highly Disengaged (-1) to Highly Engaged (1), the child is {engagement_score}.
                 Don't ask any questions. Conclude your conversation with your parent. 
                 Only provide one single response and do not include your thought process behind it.
+                **Do not** prepend “Child:” or any speaker labels to your lines.
                 """
                 
 
@@ -414,7 +431,7 @@ class VariantGenerator:
         """
         dialogue_rows = []
         attribute_rows = []
-        topic_id = 10  # Assuming one topic; change as needed.
+        topic_id = 1  # Assuming one topic; change as needed.
 
         # Enumerate through iterations
         for iter_index in range(iterations):
@@ -508,7 +525,7 @@ def main():
 
 
     # query = generator.generate_query()
-    query = "Sexual Orientation"
+    query = "Body Image & Self-Esteem"
     if not query:
         logging.error("No query retrieved from Excel. Exiting.")
         return
@@ -584,7 +601,7 @@ def main():
 
     generator.execute_variants(query, variants, child_template, parent_template, 
                                  output_dialogue_csv="dialogue_dataset.csv", 
-                                 output_attributes_csv="attributes_dataset.csv", iterations=50)
+                                 output_attributes_csv="attributes_dataset.csv", iterations=1)
 
     logging.info("Variant generation completed. Results saved to CSV files.")
 
