@@ -1,0 +1,8 @@
+reddit_posts_index.json/
+reddit_posts_index/
+env/
+reddit_data/.env
+.env
+rag_agent/.env
+rag_agent/reddit_index
+rag_agent/conversations
