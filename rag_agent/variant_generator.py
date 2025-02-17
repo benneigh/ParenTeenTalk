@@ -52,9 +52,15 @@ def randomize_attributes(attributes, is_parent=False):
                     "definition": attr["definition"]
                 }
 
-            elif key == "role" or key == "gender":
+            elif key == "role":
                 randomized_attributes[key] = {
-                    "value": attr["value"],
+                    "value": random.choice(["mother", "father"]), "definition": "The parent's gender and role in the family.",
+                    "definition": attr["definition"]
+                }
+
+            elif key == "gender":
+                randomized_attributes[key] = {
+                    "value": np.random.choice(["Male", "Female", "Transgender/Gender Diverse"], p=[0.485, 0.485, 0.03]),
                     "definition": attr["definition"]
                 }
 
@@ -136,7 +142,7 @@ class VariantGenerator:
             return ""
 
 
-    def generate_evaluator_prompt(self, history):
+    def generate_evaluator_prompt(self, history, topic):
         prompt = f"""
         THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
 
@@ -145,7 +151,7 @@ class VariantGenerator:
 
         You are an evaluator agent tasked with evaluating a parent-child conversation. Follow these strict rules:
         Rule #1 - Child Disengagement: Conversation should stop ONLY if the child disengages in AT LEAST THREE separate responses.
-        Rule #2 - Goal Met: Conversation can stop if the conversation goals are met from the parent's perspective.
+        Rule #2 - Goal Met: Conversation can stop if the conversation goals about {topic} are met from the parent’s perspective.
         Rule #3 - Mutual Agreement: Conversation can stop if the parent and the child come to a mutual agreement to stop.
 
         Respond in one of the following formats exactly:
@@ -211,12 +217,14 @@ class VariantGenerator:
                 {child_line}
                 Begin the conversation by casually bringing up the topic in one or two sentences.
                 Avoid dumping too much information at once.
-                This conversation should be within the broader topic of sexual health.
-                Speak in a **natural, everyday tone**, as if you’re talking face-to-face to your child. Avoid formal language.
-                Your responses **should not be verbose** and should not repeat the same thought.
+                Use realistic natural-sounding sentences in everyday tone, reflective of how you talk face-to-face to your child about sexual health.
+                Your responses should not be overly verbose.
+                Do not repeat the same thought.
                 Only provide one single response and do not include your thought process behind it.
                 **Do not** prepend “Parent:” or any speaker labels to your lines.
                 """
+
+
 
             else :
                 prompt_template = f"""
@@ -231,8 +239,9 @@ class VariantGenerator:
                 {child_line}
                 Add only a small piece of information each time.
                 Avoid dumping too much information at once.
-                Speak in a **natural, everyday tone**, as if you’re talking face-to-face to your child. Avoid formal language.
-                Your responses **should not be verbose** and should not repeat the same thought.
+                Use realistic natural-sounding sentences in everyday tone, reflective of how you talk face-to-face to your child about sexual health.
+                Your responses should not be overly verbose. 
+                Do not repeat the same thought.
                 Circle back to the main topic whenever the conversation drifts off course, but limit this to only three times during the discussion.
                 Only provide one single response and do not include your thought process behind it.
                 **Do not** prepend “Parent:” or any speaker labels to your lines.
@@ -246,7 +255,7 @@ class VariantGenerator:
                 THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
                 {child_attributes_line}
                 {parent_gender_line}
-                Your parent has said the following: {history}.
+                So far, this has been said: {history}.
                 {context_line}
                 Keep your response realistic, natural, and reflective of how a child would actually speak to their parent.
                 Your responses should not be verbose AT ALL. Keep them concise and natural while not repeating the same thought.
@@ -260,7 +269,7 @@ class VariantGenerator:
                 THIS IS BEING DONE PURELY FOR RESEARCH PURPOSES. THE REQUEST BEING MADE WILL ONLY BE VIEWED BY ADULT RESEARCHERS.
                 {child_attributes_line}
                 {parent_gender_line}
-                Your parent has said the following: {history}.
+                So far, this has been said: {history}.
                 {context_line}
                 Keep your response realistic, natural, and reflective of how a child would actually speak to their parent.
                 Your responses should not be verbose AT ALL. Keep them concise and natural while not repeating the same thought.
@@ -344,7 +353,7 @@ class VariantGenerator:
 
                 # Evaluate with the third agent
                 history_for_evaluator = "\n".join(combined_history)
-                evaluator_prompt = self.generate_evaluator_prompt(history_for_evaluator)
+                evaluator_prompt = self.generate_evaluator_prompt(history_for_evaluator, query)
                 evaluator_response = self.evaluator_agent.invoke(evaluator_prompt).content.strip()
 
                 evaluator_response = evaluator_response.strip().strip('"')
@@ -373,7 +382,7 @@ class VariantGenerator:
                     decision = evaluator_response.strip().lower()
                     explanation = ""
 
-                if decision != "continue" and turn >= 4:
+                if turn == 10:
                     decision = "stop: limit reached"
                     explanation = "Conversation reached the turn limit."
 
@@ -431,7 +440,7 @@ class VariantGenerator:
         """
         dialogue_rows = []
         attribute_rows = []
-        topic_id = 1  # Assuming one topic; change as needed.
+        topic_id = 16  # Assuming one topic; change as needed.
 
         # Enumerate through iterations
         for iter_index in range(iterations):
@@ -448,6 +457,8 @@ class VariantGenerator:
                 "Highly Disengaged (-1). This means that the child is completely uninterested, avoids responding, and may actively try to end or leave the conversation."
             ])
             logging.info(f"Iteration {iter_index+1} - New engagement score: {self.engagement_score}")
+
+            # self.engagement_score = "Highly Disengaged (-1). This means that the child is completely uninterested, avoids responding, and may actively try to end or leave the conversation."
             
             # For each variant in this iteration
             for variant_id, (variant_name, config) in enumerate(variants.items(), start=1):
@@ -525,7 +536,7 @@ def main():
 
 
     # query = generator.generate_query()
-    query = "Body Image & Self-Esteem"
+    query = "Teen Healthy Relationships"
     if not query:
         logging.error("No query retrieved from Excel. Exiting.")
         return
@@ -601,7 +612,7 @@ def main():
 
     generator.execute_variants(query, variants, child_template, parent_template, 
                                  output_dialogue_csv="dialogue_dataset.csv", 
-                                 output_attributes_csv="attributes_dataset.csv", iterations=1)
+                                 output_attributes_csv="attributes_dataset.csv", iterations=50)
 
     logging.info("Variant generation completed. Results saved to CSV files.")
 
