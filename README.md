@@ -10,10 +10,15 @@
 [![Code Coverage](https://img.shields.io/codecov/c/gh/benneigh/ParenTeenTalk)](https://codecov.io/gh/benneigh/ParenTeenTalk)
 [![Build Status](https://img.shields.io/github/workflow/status/benneigh/ParenTeenTalk/CI)](https://github.com/benneigh/ParenTeenTalk/actions)
 [![Dependabot Status](https://img.shields.io/badge/dependabot-active-brightgreen)](https://github.com/benneigh/ParenTeenTalk/pulls?q=is%3Apr+is%3Aopen+label%3A%22dependencies%22)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/benneigh/ParenTeenTalk/releases)
+[![Downloads](https://img.shields.io/github/downloads/benneigh/ParenTeenTalk/total.svg)](https://github.com/benneigh/ParenTeenTalk/releases)
+
+
 ## **Overview**
 ParenTeenTalk is a multi-agent AI framework that generates realistic parent-teen conversations about sexual health. It combines expert-reviewed guidelines, retrieval-augmented generation (RAG) from Reddit, and structured evaluation metrics to ensure conversations are natural, informative, and developmentally appropriate. This dataset includes 8,000 conversations across 20 sexual health topics, with eight dataset variants to study how different conversational factors (e.g., parental confidence, child engagement) impact discussion dynamics. ParenTeenTalk dataset and data generation pipeline offer a scalable, structured, and practical resource for AI healthcare, and human-centered research in sensitive topics.
 
-**Disclaimer:** This dataset is for **research and educational purposes** and should not be regarded as a substitute for professional medical or psychological advice.
+> **Disclaimer:** This dataset is for research and educational purposes and should not be regarded as a substitute for professional medical or psychological advice.
+
 ---
 
 ## **Key Features**
