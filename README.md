@@ -1,4 +1,4 @@
-# **ParenTeenTalk: A Framework and Benchmark Dataset Leveraging Crowd-Sourced Topics And Research-Based Guidelines To Generate And Evaluate Parent-Teen Health Conversations**
+# **ParenTeenTalk: A Framework and Benchmark Dataset Leveraging Crowd-Sourced Topics And Research-Based Guidelines to Generate and Evaluate Parent-Teen Health Conversations**
 [![ForTheBadge built-with-love](http://ForTheBadge.com/images/badges/built-with-love.svg)](https://github.com/benneigh/ParenTeenTalk)
 
 [![GitHub issues](https://img.shields.io/github/issues/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/issues)
