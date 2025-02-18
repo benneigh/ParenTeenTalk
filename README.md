@@ -1,58 +1,78 @@
-# **Variant Generator for Parent-Child Conversations**
+# **ParenTeenTalk: A Framework and Benchmark Dataset Leveraging Crowd-Sourced Topics And Research-Based Guidelines To Generate And Evaluate Parent-Teen Health Conversations**
+[![ForTheBadge built-with-love](http://ForTheBadge.com/images/badges/built-with-love.svg)](https://github.com/benneigh/ParenTeenTalk)
 
+[![GitHub issues](https://img.shields.io/github/issues/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/issues)
+[![GitHub forks](https://img.shields.io/github/forks/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/network)
+[![GitHub stars](https://img.shields.io/github/stars/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/stargazers)
+[![GitHub license](https://img.shields.io/github/license/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/blob/main/LICENSE)
+[![GitHub last commit](https://img.shields.io/github/last-commit/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/commits/main)
+[![GitHub contributors](https://img.shields.io/github/contributors/benneigh/ParenTeenTalk)](https://github.com/benneigh/ParenTeenTalk/graphs/contributors)
+[![Code Coverage](https://img.shields.io/codecov/c/gh/benneigh/ParenTeenTalk)](https://codecov.io/gh/benneigh/ParenTeenTalk)
+[![Build Status](https://img.shields.io/github/workflow/status/benneigh/ParenTeenTalk/CI)](https://github.com/benneigh/ParenTeenTalk/actions)
+[![Dependabot Status](https://img.shields.io/badge/dependabot-active-brightgreen)](https://github.com/benneigh/ParenTeenTalk/pulls?q=is%3Apr+is%3Aopen+label%3A%22dependencies%22)
 ## **Overview**
-The Variant Generator is a Python-based program designed to simulate realistic parent-child conversations on sensitive topics, particularly sexual health and relationships. It utilizes GPT-4o-based agents to generate conversations, evaluate interactions, and analyze multiple conversation variants. The program randomizes conversational dynamics by varying attributes such as parent confidence, child engagement, gender, and conversation structure**.
+ParenTeenTalk is a multi-agent AI framework that generates realistic parent-teen conversations about sexual health. It combines expert-reviewed guidelines, retrieval-augmented generation (RAG) from Reddit, and structured evaluation metrics to ensure conversations are natural, informative, and developmentally appropriate. This dataset includes 8,000 conversations across 20 sexual health topics, with eight dataset variants to study how different conversational factors (e.g., parental confidence, child engagement) impact discussion dynamics. ParenTeenTalk dataset and data generation pipeline offer a scalable, structured, and practical resource for AI healthcare, and human-centered research in sensitive topics.
 
-This tool is designed for research purposes to help analyze how different conversational strategies impact child engagement, learning, and information retention.
-
+**Disclaimer:** This dataset is for **research and educational purposes** and should not be regarded as a substitute for professional medical or psychological advice.
 ---
 
 ## **Key Features**
-* **Generates multiple conversational variants** based on different conditions (e.g., context availability, presence of guidelines, and user profiles).  
-* **Uses AI agents** to simulate parent and child dialogue with realistic responses.  
-* **Implements stopping criteria** to determine when a conversation should end based on disengagement, goal completion, or mutual agreement.  
-* **Supports randomized user attributes** (parent’s confidence, comfort level, dialogue openness, child’s age, gender, and closeness level).  
-* **Retrieves real-world Reddit context** for relevant topic discussions (if enabled).  
-* **Evaluates engagement levels** of child responses using predefined engagement scoring.  
-* **Exports conversation data** into structured CSV files for further analysis.
-
+- **Generates Multiple Conversational Variants**  
+  Varies auxiliary components (e.g., confidence level, child closeness, engagement) to create a rich set of simulated dialogues.
+- **Multi-Agent Setup**  
+  Employs **Parent**, **Child**, and **Moderator** AI agents for realistic turn-based conversations.
+- **Retrieval-Augmented Generation (RAG)**  
+  Integrates **real-world forum data** (Reddit) to ground conversations in authentic concerns.
+- **Evidence-Based Guidelines**  
+  Uses **research-driven** tips (e.g., Planned Parenthood’s recommendations) to shape conversation flow.
+- **Stopping Criteria**  
+  Terminates conversations naturally (child disengagement, mutual agreement, goal completion, or turn limit).
+- **Structured Evaluation**  
+  Compares dataset variants on **conversation structure, semantic quality, and communication effectiveness** (e.g., developmental appropriateness, content safety, and adherence to guidelines).
+- **Scalable for Future Research**  
+  Easily adapted for **other sensitive topics** or **health contexts** beyond sexual health.
 ---
 
 ## **How It Works**
 The **Variant Generator** follows these steps:
 
-1. **Loads pre-defined conversation topics** from an Excel file.
-2. **Randomly generates parent and child attributes**, such as:
-   - **Parent confidence, comfort, and openness levels.**
-   - **Child’s age, gender identity, and closeness to parent.**
-3. **Retrieves external context** from Reddit (if applicable).
-4. **Runs a turn-based AI-driven conversation** between a parent and child.
-5. **Evaluates the conversation** after each turn using a third AI agent (evaluator):
-   - Determines **whether to continue or stop the conversation** based on rules.
-   - Checks for **child disengagement, goal completion, or mutual agreement.**
-6. **Saves conversation logs** with structured identifiers (e.g., `T1-I3-V4-E7`).
+1. **Topic and Data Loading**  
+   - Reads a set of **20 sexual health topics** from an external file (e.g., Excel/CSV).  
+   - Optionally retrieves **Reddit-based contextual data** when context retrieval is enabled.
+2. **Attribute Randomization**  
+   - Generates **Parent** attributes: confidence, comfort, openness.  
+   - Generates **Child** attributes: age (10–13), gender, engagement level, closeness to parent.
+3. **External Context Retrieval** from Reddit (if applicable).
+4. **Conversation Simulation**  
+   - **Parent** and **Child** agents exchange turns, maintaining **natural** and **on-topic** dialogue.  
+5. **Moderator Evaluation** 
+   - After each turn using a third AI agent (moderator), determines **whether to continue or stop the conversation** based on rules.
+   - It checks for **child disengagement, goal completion, mutual agreement or hitting the turn limit.**
+6. **Logging**  
+   - Saves **conversation logs** with structured identifiers (`T1-I3-V4-E7`)—T for topic, I for iteration, V for variant and E for exchange.
+   - Logs **stopping criteria** (e.g., goal completion, disengagement).  
+   - Stores **metadata** (variant settings, user attributes) in structured CSV files.
 7. **Generates CSV files** for further research and analysis.
 
 ---
 
 ## **Conversation Variants**
-The program supports **8 distinct conversation variants** to evaluate different conditions:
+ParenTeenTalk supports **8 distinct variants** to explore how different configurations affect conversation quality:
 
 | Variant | Context Retrieval | Guidelines | User Profiles |
-|---------|------------------|------------|--------------|
-| **Variant 1** | ❌ | ❌ | ❌ |
-| **Variant 2** | ✅ | ❌ | ❌ |
-| **Variant 3** | ❌ | ✅ | ❌ |
-| **Variant 4** | ❌ | ❌ | ✅ |
-| **Variant 5** | ✅ | ✅ | ❌ |
-| **Variant 6** | ✅ | ❌ | ✅ |
-| **Variant 7** | ❌ | ✅ | ✅ |
-| **Variant 8** | ✅ | ✅ | ✅ |
+|---------|-------------------|------------|--------------|
+| **1**   | ❌                | ❌         | ❌           |
+| **2**   | ✅                | ❌         | ❌           |
+| **3**   | ❌                | ✅         | ❌           |
+| **4**   | ❌                | ❌         | ✅           |
+| **5**   | ✅                | ✅         | ❌           |
+| **6**   | ✅                | ❌         | ✅           |
+| **7**   | ❌                | ✅         | ✅           |
+| **8**   | ✅                | ✅         | ✅           |
 
-**Explanation:**
-- **Context Retrieval** → Uses external knowledge from Reddit posts.
-- **Guidelines** → Provides structured guidance for conversations.
-- **User Profiles** → Uses specific parent and child attributes.
+- **Context Retrieval:** Uses Reddit data to inform dialogue.  
+- **Guidelines:** Incorporates expert-driven tips (e.g., Planned Parenthood).  
+- **User Profiles:** Employs randomized parent/child attributes (confidence, comfort, age, etc.).
 
 ---
 
@@ -81,7 +101,7 @@ The evaluator AI determines **when to stop** the conversation based on these **r
 1. **Child Disengagement** → If the child disengages **at least three times**, the conversation ends.
 2. **Goal Met** → If the conversation meets its educational goal, it stops.
 3. **Mutual Agreement** → If both the parent and child **agree to stop**.
-
+4. **Turn Limit**  → After **10 total turns**, the conversation automatically ends.
 ---
 
 ## **Additional Features**
@@ -141,6 +161,9 @@ query = "Teen Healthy Relationships"
 ---
 
 ## **Authors**
-- **Aryan Santhosh Kumar and Benyamin Tabarsi**  
-
+- [Benyamin Tabarsi](https://benyamintabarsi.com)
+- [Aryan Santhosh Kumar](https://www.linkedin.com/in/aryan-sk)
+- [Dr. Dongkuan (DK) Xu](https://dongkuanx27.github.io/)
+- [Dr. Laura Widman](https://www.drlaurawidman.com/)
+- [Dr. Tiffany Barnes](https://eliza.csc.ncsu.edu/)
 ---
