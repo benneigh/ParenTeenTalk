@@ -63,7 +63,7 @@ The **Variant Generator** follows these steps:
 ## **Conversation Variants**
 ParenTeenTalk supports **8 distinct variants** to explore how different configurations affect conversation quality:
 
-| Variant | Context Retrieval | Guidelines | User Profiles |
+| Variant | Reddit Context | Guidelines | User Profiles |
 |---------|-------------------|------------|--------------|
 | **1**   | ❌                | ❌         | ❌           |
 | **2**   | ✅                | ❌         | ❌           |
