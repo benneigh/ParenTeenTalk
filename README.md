@@ -18,7 +18,6 @@
 ParenTeenTalk is a multi-agent AI framework that generates realistic parent-teen conversations about sexual health. It combines expert-reviewed guidelines, retrieval-augmented generation (RAG) from Reddit, and structured evaluation metrics to ensure conversations are natural, informative, and developmentally appropriate. This dataset includes 8,000 conversations across 20 sexual health topics, with eight dataset variants to study how different conversational factors (e.g., parental confidence, child engagement) impact discussion dynamics. ParenTeenTalk dataset and data generation pipeline offer a scalable, structured, and practical resource for AI healthcare, and human-centered research in sensitive topics.
 
 > **Disclaimer:** This dataset is for research and educational purposes and should not be regarded as a substitute for professional medical or psychological advice.
-
 ---
 
 ## **Key Features**
