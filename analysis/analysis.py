@@ -5,6 +5,9 @@ import json
 from sentence_transformers import SentenceTransformer, util
 from textstat import flesch_reading_ease, flesch_kincaid_grade
 from langchain_openai import ChatOpenAI
+from transformers import pipeline
+from detoxify import Detoxify
+from bert_score import score
 import os
 
 from dotenv import load_dotenv
@@ -19,7 +22,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 def load_data(dialogue_csv, attributes_csv, topics_csv):
     dialogue_df = pd.read_csv(dialogue_csv)
     attributes_df = pd.read_csv(attributes_csv)
-    topics_df = pd.read_excel(topics_csv)  # Assuming topics are in an Excel file
+    topics_df = pd.read_excel(topics_csv) 
     return dialogue_df, attributes_df, topics_df
 
 def extract_variant_id(dialogue_df):
@@ -34,6 +37,7 @@ def map_topics(dialogue_df, topics_df):
     dialogue_df['Topic_Text'] = dialogue_df['Topic_Number'].map(topic_map)
     return dialogue_df
 
+# Finalized
 def compute_semantic_similarity(dialogue_df):
     model = SentenceTransformer('all-MiniLM-L6-v2') 
     similarities = []
@@ -45,11 +49,12 @@ def compute_semantic_similarity(dialogue_df):
         topic_embedding = model.encode(topic_text, convert_to_tensor=True)
         conversation_embedding = model.encode(conversation_text, convert_to_tensor=True)
         
-        similarity_score = util.pytorch_cos_sim(topic_embedding, conversation_embedding).item()
+        similarity_score = round(util.pytorch_cos_sim(topic_embedding, conversation_embedding).item(), 4)
         similarities.append({'Variant_ID': variant_id, 'Semantic_Similarity': similarity_score})
     
     return pd.DataFrame(similarities)
 
+# Finalized
 def compute_stopping_criteria(dialogue_df):
     stopping_results = []
     
@@ -69,6 +74,7 @@ def compute_stopping_criteria(dialogue_df):
     
     return pd.DataFrame(stopping_results)
 
+# Finalized
 def compute_readability(dialogue_df):
     readability_scores = []
     
@@ -92,12 +98,116 @@ def compute_readability(dialogue_df):
     
     return pd.DataFrame(readability_scores)
 
-def compute_developmental_analysis(dialogue_df, attributes_df):
+
+# # Change to provide all of the numbers (sub categories) and we will calculate the average ourselves
+# def compute_developmental_analysis(dialogue_df, attributes_df):
+#     api_key = os.getenv("OPENAI_API_KEY")
+#     base_url = os.getenv("OPENAI_API_BASE")
+#     client = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
+    
+#     developmental_scores = []
+    
+#     for variant_id, group in dialogue_df.groupby('Variant_ID'):
+#         parent_text = " ".join(group[group['speaker'] == 'Parent']['utterance'].astype(str).tolist())
+#         child_attributes = attributes_df.loc[attributes_df['ID'] == variant_id, 'Child_Attributes']
+
+#         # Check if it's empty or NaN
+#         if child_attributes.empty or pd.isna(child_attributes.iloc[0]):
+#             child_attributes = "{}"
+#         else:
+#             child_attributes = child_attributes.iloc[0]  # Extract the value
+
+#         child_age = json.loads(child_attributes).get('age', {}).get('value', None)
+#         topic_text = group['Topic_Text'].iloc[0] if 'Topic_Text' in group else ""
+        
+#         prompt = f"""
+#         You are tasked with evaluating the developmental appropriateness of a conversation between a parent and a child.
+#         Your response should only be a number.
+#         The conversation is about the topic: {topic_text}.
+#         """
+        
+#         if child_age:
+#             prompt += f"\nThe child's age is {child_age} years old."
+        
+#         prompt += "\n\nEvaluate the conversation based on the following criteria and provide a score from 1 to 5 for each:\n"
+#         prompt += "1. Appropriateness for child's age\n2. Response length\n3. Depth of detail on a single topic (more for older children)\n"
+#         prompt += "4. Breadth (more topics = lower score)\n5. Level of concreteness vs. abstraction (younger = more concrete, older = more abstract)\n\n"
+#         prompt += f"Here is the parent's part of the conversation:\n{parent_text}\n\nOnly provide the average of the scores without reasoning."
+        
+#         response = client.invoke(prompt).content.strip()
+        
+#         developmental_scores.append({
+#             'Variant_ID': variant_id,
+#             'Developmental_Analysis': response
+#         })
+    
+#     return pd.DataFrame(developmental_scores)
+
+
+# # TODO Change to latest Guidelines (top table) and also breakdown of each score and we will calc average
+# def compute_communication_skills_analysis(dialogue_df, attributes_df):
+#     api_key = os.getenv("OPENAI_API_KEY")
+#     base_url = os.getenv("OPENAI_API_BASE")
+#     client = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
+    
+#     communication_scores = []
+    
+#     for variant_id, group in dialogue_df.groupby('Variant_ID'):
+#         parent_text = " ".join(group[group['speaker'] == 'Parent']['utterance'].astype(str).tolist())
+#         child_attributes = attributes_df.loc[attributes_df['ID'] == variant_id, 'Child_Attributes']
+
+#         # Check if child attributes exist
+#         if child_attributes.empty or pd.isna(child_attributes.iloc[0]):
+#             child_attributes = "{}"
+#         else:
+#             child_attributes = str(child_attributes.iloc[0])  # Ensure it's a string
+
+#         child_age = json.loads(child_attributes).get('age', {}).get('value', None)
+#         topic_text = group['Topic_Text'].iloc[0] if 'Topic_Text' in group else ""
+        
+#         prompt = f"""
+#         You are evaluating a parent's communication skills based on expert guidelines.
+#         Your response should only be a number.
+#         The conversation is about the topic: {topic_text}.
+#         """
+
+#         if child_age:
+#             prompt += f"\nThe child's age is {child_age} years old."
+
+#         prompt += """
+#         Evaluate the conversation based on the following guidelines, and provide a score from 1 to 5 for each:
+        
+        
+#         1. Ask open-ended questions.
+#         2. Don’t jump to conclusions; ask what they already know before responding.
+#         3. Keep answers short and simple, explaining new words if needed.
+#         4. Keep the conversation open after answering a question.
+#         5. Check for understanding by asking follow-up questions.
+
+#         **Parent’s Conversation:**
+#         {parent_text}
+        
+#         Only provide the average of the scores without any explanation.
+#         """
+
+#         response = client.invoke(prompt).content.strip()
+        
+#         communication_scores.append({
+#             'Variant_ID': variant_id,
+#             'Communication_Skills_Score': response
+#         })
+    
+#     return pd.DataFrame(communication_scores)
+
+
+# Finalized
+def compute_parenting_analysis(dialogue_df, attributes_df):
+    """Computes both developmental appropriateness and communication skills in a single function."""
     api_key = os.getenv("OPENAI_API_KEY")
     base_url = os.getenv("OPENAI_API_BASE")
     client = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
     
-    developmental_scores = []
+    analysis_results = []
     
     for variant_id, group in dialogue_df.groupby('Variant_ID'):
         parent_text = " ".join(group[group['speaker'] == 'Parent']['utterance'].astype(str).tolist())
@@ -113,89 +223,58 @@ def compute_developmental_analysis(dialogue_df, attributes_df):
         topic_text = group['Topic_Text'].iloc[0] if 'Topic_Text' in group else ""
         
         prompt = f"""
-        You are tasked with evaluating the developmental appropriateness of a conversation between a parent and a child.
-        Your response should only be a number.
+        You are evaluating a parent's conversation with their child for both developmental appropriateness and communication skills.
+        
         The conversation is about the topic: {topic_text}.
-        """
+        The child's age is {child_age} years old.
         
-        if child_age:
-            prompt += f"\nThe child's age is {child_age} years old."
+        **Developmental Appropriateness Criteria (Rate 1-5)**
+        1. Appropriateness for child's age
+        2. Response length
+        3. Depth of detail on a single topic (more for older children)
+        4. Breadth (more topics = lower score)
+        5. Level of concreteness vs. abstraction (younger = more concrete, older = more abstract)
         
-        prompt += "\n\nEvaluate the conversation based on the following criteria and provide a score from 1 to 5 for each:\n"
-        prompt += "1. Appropriateness for child's age\n2. Response length\n3. Depth of detail on a single topic (more for older children)\n"
-        prompt += "4. Breadth (more topics = lower score)\n5. Level of concreteness vs. abstraction (younger = more concrete, older = more abstract)\n\n"
-        prompt += f"Here is the parent's part of the conversation:\n{parent_text}\n\nOnly provide the average of the scores without reasoning."
-        
-        response = client.invoke(prompt).content.strip()
-        
-        developmental_scores.append({
-            'Variant_ID': variant_id,
-            'Developmental_Analysis': response
-        })
-    
-    return pd.DataFrame(developmental_scores)
-
-def compute_communication_skills_analysis(dialogue_df, attributes_df):
-    api_key = os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENAI_API_BASE")
-    client = ChatOpenAI(api_key=api_key, model="gpt-4o", base_url=base_url)
-    
-    communication_scores = []
-    
-    for variant_id, group in dialogue_df.groupby('Variant_ID'):
-        parent_text = " ".join(group[group['speaker'] == 'Parent']['utterance'].astype(str).tolist())
-        child_attributes = attributes_df.loc[attributes_df['ID'] == variant_id, 'Child_Attributes']
-
-        # Check if child attributes exist
-        if child_attributes.empty or pd.isna(child_attributes.iloc[0]):
-            child_attributes = "{}"
-        else:
-            child_attributes = str(child_attributes.iloc[0])  # Ensure it's a string
-
-        child_age = json.loads(child_attributes).get('age', {}).get('value', None)
-        topic_text = group['Topic_Text'].iloc[0] if 'Topic_Text' in group else ""
-        
-        prompt = f"""
-        You are evaluating a parent's communication skills based on expert guidelines.
-        Your response should only be a number.
-        The conversation is about the topic: {topic_text}.
-        """
-
-        if child_age:
-            prompt += f"\nThe child's age is {child_age} years old."
-
-        prompt += """
-        Evaluate the conversation based on the following guidelines, and provide a score from 1 to 5 for each:
-        
-        **CDC Guidelines**
-        1. Be honest and direct when talking about sensitive subjects.
-        2. Help the child make healthy choices while allowing them to make their own decisions.
-        3. Respect the child’s opinions and make sure they feel heard.
-        4. Be clear about goals and expectations but allow input in decision-making.
-        
-        **Planned Parenthood Guidelines**
-        5. Ask open-ended questions.
-        6. Don’t jump to conclusions; ask what they already know before responding.
-        7. Keep answers short and simple, explaining new words if needed.
-        8. Keep the conversation open after answering a question.
-        9. Check for understanding by asking follow-up questions.
-        10. If unsure about an answer, offer to look it up together.
+        **Communication Skills Criteria (Rate 1-5)**
+        6. Asking open-ended questions
+        7. Avoiding assumptions, first checking child's knowledge
+        8. Keeping responses short and simple
+        9. Keeping the conversation open after answering a question
+        10. Checking for understanding with follow-up questions
 
         **Parent’s Conversation:**
         {parent_text}
         
-        Only provide the average of the scores without any explanation.
+        Provide a **list of 10 numerical scores (1-5)** in the exact order above, **separated by commas** (e.g., "5,4,3,4,5,5,3,4,5,4").
         """
-
-        response = client.invoke(prompt).content.strip()
         
-        communication_scores.append({
-            'Variant_ID': variant_id,
-            'Communication_Skills_Score': response
-        })
-    
-    return pd.DataFrame(communication_scores)
+        response = client.invoke(prompt).content.strip()
+        scores = [int(x) for x in response.split(",")] if "," in response else [None] * 10
 
+        # Calculate average scores
+        avg_developmental_score = round(sum(scores[:5]) / 5, 4) if all(scores[:5]) else None
+        avg_communication_score = round(sum(scores[5:]) / 5, 4) if all(scores[5:]) else None
+
+        analysis_results.append({
+            'Variant_ID': variant_id,
+            'Dev_Age_Appropriateness': scores[0],
+            'Dev_Response_Length': scores[1],
+            'Dev_Depth_of_Topic': scores[2],
+            'Dev_Breadth_of_Topics': scores[3],
+            'Dev_Concreteness_vs_Abstraction': scores[4],
+            'Comm_Open_Ended_Questions': scores[5],
+            'Comm_Avoiding_Assumptions': scores[6],
+            'Comm_Short_and_Simple': scores[7],
+            'Comm_Keeping_Conversation_Open': scores[8],
+            'Comm_Checking_Understanding': scores[9],
+            'Avg_Developmental_Score': avg_developmental_score,
+            'Avg_Communication_Score': avg_communication_score
+        })
+
+    return pd.DataFrame(analysis_results)
+
+
+# Finalized
 def compute_descriptive_statistics(dialogue_df, attributes_df):
     descriptive_results = []
 
@@ -204,53 +283,84 @@ def compute_descriptive_statistics(dialogue_df, attributes_df):
         parent_utterances = group[group['speaker'] == 'Parent']
         child_utterances = group[group['speaker'] == 'Child']
 
-        # Compute utterance counts
-        parent_utterance_count = len(parent_utterances)
-        child_utterance_count = len(child_utterances)
-
         # Compute average utterance length (in words)
         parent_avg_length = (
-            parent_utterances['utterance'].apply(lambda x: len(str(x).split())).mean()
+            round(parent_utterances['utterance'].apply(lambda x: len(str(x).split())).mean(), 4)
             if not parent_utterances.empty else 0
         )
         child_avg_length = (
-            child_utterances['utterance'].apply(lambda x: len(str(x).split())).mean()
+            round(child_utterances['utterance'].apply(lambda x: len(str(x).split())).mean(), 4)
             if not child_utterances.empty else 0
         )
-
-        # Extract Parent and Child Attributes
-        parent_attributes = attributes_df.loc[attributes_df['ID'] == variant_id, 'Parent_Attributes']
-        child_attributes = attributes_df.loc[attributes_df['ID'] == variant_id, 'Child_Attributes']
-
-        # Check if attributes exist
-        parent_attr_dict = json.loads(parent_attributes.iloc[0]) if not parent_attributes.empty and pd.notna(parent_attributes.iloc[0]) else {}
-        child_attr_dict = json.loads(child_attributes.iloc[0]) if not child_attributes.empty and pd.notna(child_attributes.iloc[0]) else {}
-
-        # Extract specific attributes (if available)
-        parent_confidence = parent_attr_dict.get('confidence_level', {}).get('value', 'Unknown')
-        parent_comfort = parent_attr_dict.get('comfort_level', {}).get('value', 'Unknown')
-        parent_open_dialogue = parent_attr_dict.get('open_dialogue', {}).get('value', 'Unknown')
-
-        child_age = child_attr_dict.get('age', {}).get('value', 'Unknown')
-        child_closeness = child_attr_dict.get('parent_child_closeness_level', {}).get('value', 'Unknown')
-        child_gender = child_attr_dict.get('gender', {}).get('value', 'Unknown')
 
         descriptive_results.append({
             'Variant_ID': variant_id,
             'Total_Utterances': total_utterances,
-            'Parent_Utterance_Count': parent_utterance_count,
-            'Child_Utterance_Count': child_utterance_count,
             'Parent_Avg_Utterance_Length': parent_avg_length,
-            'Child_Avg_Utterance_Length': child_avg_length,
-            'Parent_Confidence': parent_confidence,
-            'Parent_Comfort': parent_comfort,
-            'Parent_Open_Dialogue': parent_open_dialogue,
-            'Child_Age': child_age,
-            'Child_Closeness': child_closeness,
-            'Child_Gender': child_gender
+            'Child_Avg_Utterance_Length': child_avg_length
         })
 
     return pd.DataFrame(descriptive_results)
+
+
+nli_pipeline = pipeline("text-classification", model="cross-encoder/nli-deberta-v3-large")
+
+def check_entailment(premise, hypothesis):
+    result = nli_pipeline(f"{premise} [SEP] {hypothesis}")
+    return result[0]['label'], result[0]['score']
+
+# TODO: Keep it as a percentage and also go turn by turn - Parent+Child and then Child+Parent
+def compute_turn_level_entailment(dialogue_df):
+    entailment_results = []
+    
+    for variant_id, group in dialogue_df.groupby('Variant_ID'):
+        turns = group[['speaker', 'utterance']].values.tolist()
+        entailment_count = 0
+        total_pairs = 0
+        
+        for i in range(1, len(turns)):
+            premise = turns[i - 1][1]  # Previous utterance
+            hypothesis = turns[i][1]  # Current utterance
+            
+            label, score = check_entailment(premise, hypothesis)
+            
+            if label == "ENTAILMENT":
+                entailment_count += 1
+            total_pairs += 1
+            
+        entailment_percentage = (entailment_count / total_pairs * 100) if total_pairs > 0 else 0
+        
+        entailment_results.append({
+            'Variant_ID': variant_id,
+            'Entailment_Percentage': entailment_percentage
+        })
+    
+    return pd.DataFrame(entailment_results)
+
+# Finalized
+def compute_toxicity_score(dialogue_df):
+    """Computes toxicity scores for Parent and Child utterances separately."""
+    toxicity_results = []
+
+    for variant_id, group in dialogue_df.groupby('Variant_ID'):
+        parent_utterances = group[group['speaker'] == 'Parent']['utterance'].astype(str).tolist()
+        child_utterances = group[group['speaker'] == 'Child']['utterance'].astype(str).tolist()
+        
+        # Compute toxicity for Parent
+        parent_toxicity = Detoxify('original').predict(parent_utterances) if parent_utterances else None
+        child_toxicity = Detoxify('original').predict(child_utterances) if child_utterances else None
+
+        # Compute average toxicity scores
+        parent_avg_toxicity = round(np.mean(parent_toxicity['toxicity']), 4) if parent_toxicity else 0
+        child_avg_toxicity = round(np.mean(child_toxicity['toxicity']), 4) if child_toxicity else 0
+
+        toxicity_results.append({
+            'Variant_ID': variant_id,
+            'Parent_Avg_Toxicity': parent_avg_toxicity,
+            'Child_Avg_Toxicity': child_avg_toxicity
+        })
+
+    return pd.DataFrame(toxicity_results)
 
 
 
@@ -267,14 +377,27 @@ def main():
     readability_df = compute_readability(dialogue_df)
     # developmental_df = compute_developmental_analysis(dialogue_df, attributes_df)
     # communication_df = compute_communication_skills_analysis(dialogue_df, attributes_df)
+    llm_df = compute_parenting_analysis(dialogue_df, attributes_df)
     descriptive_df = compute_descriptive_statistics(dialogue_df, attributes_df)
+    entailment_df = compute_turn_level_entailment(dialogue_df)
+    toxicity_df = compute_toxicity_score(dialogue_df)
+
+    # test_premise = "I love programming in Python."
+    # test_hypothesis = "Python is my favorite language to code in."
+
+    # result = check_entailment(test_premise, test_hypothesis)
+    # print(result) 
+
     
     similarity_df.to_csv("semantic_similarity_scores.csv", index=False)
     stopping_df.to_csv("stopping_criteria_scores.csv", index=False)
     readability_df.to_csv("readability_scores.csv", index=False)
     # developmental_df.to_csv("developmental_analysis_scores.csv", index=False)
     # communication_df.to_csv("communication_skills_scores.csv", index=False)
+    llm_df.to_csv("parenting_analysis_scores.csv", index=False)
     descriptive_df.to_csv("descriptive_statistics.csv", index=False)
+    entailment_df.to_csv("turn_level_entailment.csv", index=False)
+    toxicity_df.to_csv("toxicity_scores.csv", index=False)
     print("Evaluation completed. Results saved to CSV files.")
 
 if __name__ == "__main__":

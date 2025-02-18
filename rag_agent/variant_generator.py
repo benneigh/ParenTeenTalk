@@ -440,7 +440,7 @@ class VariantGenerator:
         """
         dialogue_rows = []
         attribute_rows = []
-        topic_id = 16  # Assuming one topic; change as needed.
+        topic_id = 20  # Assuming one topic; change as needed.
 
         # Enumerate through iterations
         for iter_index in range(iterations):
@@ -486,7 +486,8 @@ class VariantGenerator:
                     "Parent_Attributes": json.dumps(user_profiles) if config.get("user_profiles") is not None else "",
                     "Child_Attributes": json.dumps(child_profiles) if config.get("child_profiles") is not None else "",
                     "Guidelines": config.get("guidelines", ""),
-                    "Reddit Context Included": config.get("context", False)
+                    "Reddit Context Included": config.get("context", False),
+                    "Engagement Score": self.engagement_score
                 }
                 attribute_rows.append(attr_row)
 
@@ -496,7 +497,7 @@ class VariantGenerator:
         logging.info(f"Dialogue dataset saved to {output_dialogue_csv}")
 
         # Save attributes rows to CSV
-        attributes_df = pd.DataFrame(attribute_rows, columns=["ID", "Variant", "Parent_Attributes", "Child_Attributes", "Guidelines", "Reddit Context Included"])
+        attributes_df = pd.DataFrame(attribute_rows, columns=["ID", "Variant", "Parent_Attributes", "Child_Attributes", "Guidelines", "Reddit Context Included", "Engagement Score"])
         attributes_df.to_csv(output_attributes_csv, index=False)
         logging.info(f"Attributes dataset saved to {output_attributes_csv}")
 
@@ -536,7 +537,7 @@ def main():
 
 
     # query = generator.generate_query()
-    query = "Teen Healthy Relationships"
+    query = "Virginity"
     if not query:
         logging.error("No query retrieved from Excel. Exiting.")
         return
