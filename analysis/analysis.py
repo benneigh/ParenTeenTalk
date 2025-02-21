@@ -11,6 +11,7 @@ from bert_score import score
 import os
 import time
 import logging
+from functools import partial
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -57,17 +58,41 @@ def map_topics(dialogue_df, topics_df):
     return dialogue_df
 
 # Finalized
+# BERT-base → "bert-base-uncased" Done
+# RoBERTa-large → "roberta-large" Done
+# DeBERTa-v3-large → "microsoft/deberta-v3-large" Done
+# DistilBERT → "distilbert-base-uncased" Done
+# SimCSE → "princeton-nlp/sup-simcse-roberta-large" Done
 def compute_topic_alignment(dialogue_df):
     """Computes BERTScore between the Topic_Text and the full conversation."""
     logger.info("Computing Topic Alignment scores...");
     device = "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    bert_scorer = lambda preds, refs: score(preds, refs, lang="en", device=device)
+    bert_scorer = lambda preds, refs: score(preds, refs, model_type="princeton-nlp/sup-simcse-roberta-large", device=device)
 
     topic_alignment_results = []
 
-    for variant_id, group in dialogue_df.groupby('Variant_ID'):
+    def extract_numeric_parts(variant_id):
+        """Extract numeric parts from Variant_ID like T18-I10-V3."""
+        parts = variant_id.split('-')  # ['T18', 'I10', 'V3']
+        topic_num = int(parts[0][1:])  # Extract number from 'T18'
+        iteration_num = int(parts[1][1:])  # Extract number from 'I10'
+        variant_num = int(parts[2][1:])  # Extract number from 'V3'
+        return topic_num, iteration_num, variant_num
+
+    # Create separate sortable columns
+    dialogue_df[['Topic_Num', 'Iteration_Num', 'Variant_Num']] = dialogue_df['Variant_ID'].apply(
+        lambda v: pd.Series(extract_numeric_parts(v))
+    )
+
+    # Ensure correct order and retain order in grouping
+    dialogue_df = dialogue_df.sort_values(by=['Topic_Num', 'Iteration_Num', 'Variant_Num'])
+
+    # Drop sorting columns after sorting
+    sorted_dialogue_df = dialogue_df.drop(columns=['Topic_Num', 'Iteration_Num', 'Variant_Num'])
+
+    for variant_id, group in sorted_dialogue_df.groupby('Variant_ID', sort=False):
         logger.info(f"Processing Variant {variant_id}...")
         # Get Topic Text
         topic_text = group['Topic_Text'].iloc[0] if 'Topic_Text' in group else ""
@@ -493,121 +518,138 @@ def compute_descriptive_statistics(dialogue_df, attributes_df):
 
 
 
-nli_pipeline = pipeline("text-classification", model="cross-encoder/nli-deberta-v3-large")
+# Load entailment models
+entailment_models = {
+    "bert-base-nli": pipeline("text-classification", model="facebook/bart-large-mnli"),
+    "roberta-large-nli": pipeline("text-classification", model="roberta-large-mnli"),
+    "deberta-large-nli": pipeline("text-classification", model="microsoft/deberta-large-mnli"),
+    "distilbert-nli": pipeline("text-classification", model="typeform/distilbert-base-uncased-mnli")
+}
 
-def check_entailment(premise, hypothesis):
+def check_entailment(premise, hypothesis, model_pipeline):
     """Runs the entailment model and returns label + confidence score."""
-    result = nli_pipeline(f"{premise} [SEP] {hypothesis}")
+    result = model_pipeline(f"{premise} [SEP] {hypothesis}")
     return result[0]['label'], result[0]['score']
 
-# Finalized
 def compute_turn_level_entailment(dialogue_df):
+    """Computes turn-level entailment scores for multiple models on Variant 8s only."""
     logger.info("Computing Turn-Level Entailment Scores...");
+
+    # Filter only Variant 8s
+    dialogue_df = dialogue_df[dialogue_df["Variant_ID"].str.endswith("-V8")]
+
     entailment_results = []
 
-    for variant_id, group in dialogue_df.groupby('Variant_ID'):
+    for variant_id, group in dialogue_df.groupby("Variant_ID", sort=False):
         logger.info(f"Processing Variant {variant_id}...")
         turns = group[['speaker', 'utterance']].values.tolist()
 
-        # Initialize counts
-        overall_counts = {"entailment": 0, "neutral": 0, "contradiction": 0}
-        overall_scores = {"entailment": [], "neutral": [], "contradiction": []}
-        total_turn_pairs = 0
+        if len(turns) < 2:
+            continue  # Skip if no turn pairs exist
 
-        parent_child_counts = {"entailment": 0, "neutral": 0, "contradiction": 0}
-        child_parent_counts = {"entailment": 0, "neutral": 0, "contradiction": 0}
-        parent_child_scores = {"entailment": [], "neutral": [], "contradiction": []}
-        child_parent_scores = {"entailment": [], "neutral": [], "contradiction": []}
-        parent_child_total_pairs = 0
-        child_parent_total_pairs = 0
+        for model_name, model_pipeline in entailment_models.items():
+            # Initialize counts
+            overall_counts = {"entailment": 0, "neutral": 0, "contradiction": 0}
+            overall_scores = {"entailment": [], "neutral": [], "contradiction": []}
+            total_turn_pairs = 0
 
-        for i in range(1, len(turns)):
-            premise = turns[i - 1][1]  # Previous utterance
-            hypothesis = turns[i][1]  # Current utterance
-            prev_speaker = turns[i - 1][0]
-            curr_speaker = turns[i][0]
+            parent_child_counts = {"entailment": 0, "neutral": 0, "contradiction": 0}
+            child_parent_counts = {"entailment": 0, "neutral": 0, "contradiction": 0}
+            parent_child_scores = {"entailment": [], "neutral": [], "contradiction": []}
+            child_parent_scores = {"entailment": [], "neutral": [], "contradiction": []}
+            parent_child_total_pairs = 0
+            child_parent_total_pairs = 0
 
-            # Get entailment prediction
-            label, score = check_entailment(premise, hypothesis)
-            label = label.lower()  # Normalize label
-            score = round(score, 4)  # Round score
+            for i in range(1, len(turns)):
+                premise = turns[i - 1][1]  # Previous utterance
+                hypothesis = turns[i][1]  # Current utterance
+                prev_speaker = turns[i - 1][0]
+                curr_speaker = turns[i][0]
 
-            # Track overall counts
-            if label in overall_counts:
-                overall_counts[label] += 1
-                overall_scores[label].append(score)
-            total_turn_pairs += 1
+                # Get entailment prediction
+                label, score = check_entailment(premise, hypothesis, model_pipeline)
+                label = label.lower()  # Normalize label
+                score = round(score, 4)  # Round score
 
-            # Track Parent → Child interactions
-            if prev_speaker == "Parent" and curr_speaker == "Child":
-                if label in parent_child_counts:
-                    parent_child_counts[label] += 1
-                    parent_child_scores[label].append(score)
-                parent_child_total_pairs += 1
+                # Track overall counts
+                if label in overall_counts:
+                    overall_counts[label] += 1
+                    overall_scores[label].append(score)
+                total_turn_pairs += 1
 
-            # Track Child → Parent interactions
-            if prev_speaker == "Child" and curr_speaker == "Parent":
-                if label in child_parent_counts:
-                    child_parent_counts[label] += 1
-                    child_parent_scores[label].append(score)
-                child_parent_total_pairs += 1
+                # Track Parent → Child interactions
+                if prev_speaker == "Parent" and curr_speaker == "Child":
+                    if label in parent_child_counts:
+                        parent_child_counts[label] += 1
+                        parent_child_scores[label].append(score)
+                    parent_child_total_pairs += 1
 
-        # Compute percentages for each label
-        def compute_percentage(count, total):
-            return round((count / total * 100), 2) if total > 0 else 0
+                # Track Child → Parent interactions
+                if prev_speaker == "Child" and curr_speaker == "Parent":
+                    if label in child_parent_counts:
+                        child_parent_counts[label] += 1
+                        child_parent_scores[label].append(score)
+                    child_parent_total_pairs += 1
 
-        parent_child_entailment_pct = compute_percentage(parent_child_counts["entailment"], parent_child_total_pairs)
-        parent_child_neutral_pct = compute_percentage(parent_child_counts["neutral"], parent_child_total_pairs)
-        parent_child_contradiction_pct = compute_percentage(parent_child_counts["contradiction"], parent_child_total_pairs)
+            # Compute percentages for each label
+            def compute_percentage(count, total):
+                return round((count / total * 100), 2) if total > 0 else 0
 
-        child_parent_entailment_pct = compute_percentage(child_parent_counts["entailment"], child_parent_total_pairs)
-        child_parent_neutral_pct = compute_percentage(child_parent_counts["neutral"], child_parent_total_pairs)
-        child_parent_contradiction_pct = compute_percentage(child_parent_counts["contradiction"], child_parent_total_pairs)
+            parent_child_entailment_pct = compute_percentage(parent_child_counts["entailment"], parent_child_total_pairs)
+            parent_child_neutral_pct = compute_percentage(parent_child_counts["neutral"], parent_child_total_pairs)
+            parent_child_contradiction_pct = compute_percentage(parent_child_counts["contradiction"], parent_child_total_pairs)
 
-        overall_entailment_pct = compute_percentage(overall_counts["entailment"], total_turn_pairs)
-        overall_neutral_pct = compute_percentage(overall_counts["neutral"], total_turn_pairs)
-        overall_contradiction_pct = compute_percentage(overall_counts["contradiction"], total_turn_pairs)
+            child_parent_entailment_pct = compute_percentage(child_parent_counts["entailment"], child_parent_total_pairs)
+            child_parent_neutral_pct = compute_percentage(child_parent_counts["neutral"], child_parent_total_pairs)
+            child_parent_contradiction_pct = compute_percentage(child_parent_counts["contradiction"], child_parent_total_pairs)
 
-        # Compute average scores for each label
-        def compute_avg_score(scores):
-            return round(np.mean(scores), 4) if scores else 0.0
+            overall_entailment_pct = compute_percentage(overall_counts["entailment"], total_turn_pairs)
+            overall_neutral_pct = compute_percentage(overall_counts["neutral"], total_turn_pairs)
+            overall_contradiction_pct = compute_percentage(overall_counts["contradiction"], total_turn_pairs)
 
-        parent_child_entailment_score = compute_avg_score(parent_child_scores["entailment"])
-        parent_child_neutral_score = compute_avg_score(parent_child_scores["neutral"])
-        parent_child_contradiction_score = compute_avg_score(parent_child_scores["contradiction"])
+            # Compute average scores
+            def compute_avg_score(scores):
+                return round(np.mean(scores), 4) if scores else 0.0
 
-        child_parent_entailment_score = compute_avg_score(child_parent_scores["entailment"])
-        child_parent_neutral_score = compute_avg_score(child_parent_scores["neutral"])
-        child_parent_contradiction_score = compute_avg_score(child_parent_scores["contradiction"])
+            parent_child_entailment_score = compute_avg_score(parent_child_scores["entailment"])
+            parent_child_neutral_score = compute_avg_score(parent_child_scores["neutral"])
+            parent_child_contradiction_score = compute_avg_score(parent_child_scores["contradiction"])
 
-        overall_entailment_score = compute_avg_score(overall_scores["entailment"])
-        overall_neutral_score = compute_avg_score(overall_scores["neutral"])
-        overall_contradiction_score = compute_avg_score(overall_scores["contradiction"])
+            child_parent_entailment_score = compute_avg_score(child_parent_scores["entailment"])
+            child_parent_neutral_score = compute_avg_score(child_parent_scores["neutral"])
+            child_parent_contradiction_score = compute_avg_score(child_parent_scores["contradiction"])
 
-        # Store results
-        entailment_results.append({
-            'Variant_ID': variant_id,
-            'Parent_Child_Entailment_Percentage': parent_child_entailment_pct,
-            'Parent_Child_Neutral_Percentage': parent_child_neutral_pct,
-            'Parent_Child_Contradiction_Percentage': parent_child_contradiction_pct,
-            'Parent_Child_Avg_Entailment_Score': parent_child_entailment_score,
-            'Parent_Child_Avg_Neutral_Score': parent_child_neutral_score,
-            'Parent_Child_Avg_Contradiction_Score': parent_child_contradiction_score,
-            'Child_Parent_Entailment_Percentage': child_parent_entailment_pct,
-            'Child_Parent_Neutral_Percentage': child_parent_neutral_pct,
-            'Child_Parent_Contradiction_Percentage': child_parent_contradiction_pct,
-            'Child_Parent_Avg_Entailment_Score': child_parent_entailment_score,
-            'Child_Parent_Avg_Neutral_Score': child_parent_neutral_score,
-            'Child_Parent_Avg_Contradiction_Score': child_parent_contradiction_score,
-            'Overall_Entailment_Percentage': overall_entailment_pct,
-            'Overall_Neutral_Percentage': overall_neutral_pct,
-            'Overall_Contradiction_Percentage': overall_contradiction_pct,
-            'Overall_Avg_Entailment_Score': overall_entailment_score,
-            'Overall_Avg_Neutral_Score': overall_neutral_score,
-            'Overall_Avg_Contradiction_Score': overall_contradiction_score
-        })
+            overall_entailment_score = compute_avg_score(overall_scores["entailment"])
+            overall_neutral_score = compute_avg_score(overall_scores["neutral"])
+            overall_contradiction_score = compute_avg_score(overall_scores["contradiction"])
+
+            # Store results
+            entailment_results.append({
+                'Variant_ID': variant_id,
+                'Model': model_name,
+                'Parent_Child_Entailment_Percentage': parent_child_entailment_pct,
+                'Parent_Child_Neutral_Percentage': parent_child_neutral_pct,
+                'Parent_Child_Contradiction_Percentage': parent_child_contradiction_pct,
+                'Parent_Child_Avg_Entailment_Score': parent_child_entailment_score,
+                'Parent_Child_Avg_Neutral_Score': parent_child_neutral_score,
+                'Parent_Child_Avg_Contradiction_Score': parent_child_contradiction_score,
+                'Child_Parent_Entailment_Percentage': child_parent_entailment_pct,
+                'Child_Parent_Neutral_Percentage': child_parent_neutral_pct,
+                'Child_Parent_Contradiction_Percentage': child_parent_contradiction_pct,
+                'Child_Parent_Avg_Entailment_Score': child_parent_entailment_score,
+                'Child_Parent_Avg_Neutral_Score': child_parent_neutral_score,
+                'Child_Parent_Avg_Contradiction_Score': child_parent_contradiction_score,
+                'Overall_Entailment_Percentage': overall_entailment_pct,
+                'Overall_Neutral_Percentage': overall_neutral_pct,
+                'Overall_Contradiction_Percentage': overall_contradiction_pct,
+                'Overall_Avg_Entailment_Score': overall_entailment_score,
+                'Overall_Avg_Neutral_Score': overall_neutral_score,
+                'Overall_Avg_Contradiction_Score': overall_contradiction_score
+            })
+
     logger.info("Turn-Level Entailment Scores computation complete.");
     return pd.DataFrame(entailment_results)
+
 
 
 
@@ -642,18 +684,33 @@ def compute_toxicity_score(dialogue_df):
 
 # Finalized
 def compute_bertscore(dialogue_df, topics_df, rag_df):
-    """Computes BERTScore for Parent utterances against the reference text."""
-    logger.info("Computing BERTScore...");
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
+    """Computes BERTScore for Parent utterances against the reference text using multiple models."""
+    logger.info(f"Computing BERTScore with multiple models...");
+    device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
 
-    bert_scorer = lambda preds, refs: score(preds, refs, lang="en", device=device)
+    # Models to use (excluding TinyBERT)
+    models = {
+        "bert-base-uncased": "bert-base-uncased",
+        "roberta-large": "roberta-large",
+        "deberta-v3-large": "microsoft/deberta-v3-large",
+        "distilbert": "distilbert-base-uncased",
+        "simcse-roberta-large": "princeton-nlp/sup-simcse-roberta-large"
+    }
+
+    # Load BERTScore models
+    bert_scorers = {
+        model_name: partial(score, model_type=model_path, device=device)
+        for model_name, model_path in models.items()
+    }
+
+    # Filter only Variant 8s
+    dialogue_df = dialogue_df[dialogue_df["Variant_ID"].str.endswith("-V8")]
 
     bertscore_results = []
 
-    for variant_id, group in dialogue_df.groupby("Variant_ID"):
+    for variant_id, group in dialogue_df.groupby("Variant_ID", sort=False):
         logger.info(f"Processing Variant {variant_id}...")
-        # Get Topic ID
         topic_id = f"T{group['Topic_Number'].iloc[0]}"
         
         # Retrieve Topic Text & RAG Content
@@ -680,26 +737,29 @@ def compute_bertscore(dialogue_df, topics_df, rag_df):
         if not parent_utterances:
             continue  # Skip if no parent utterances exist
 
-        # Compute BERTScore
-        P, R, F1 = bert_scorer(parent_utterances, [reference_text] * len(parent_utterances))
+        for model_name, scorer in bert_scorers.items():
+            # Compute BERTScore
+            P, R, F1 = scorer(parent_utterances, [reference_text] * len(parent_utterances))
 
-        # Store results
-        bertscore_results.append({
-            "Variant_ID": variant_id,
-            "BERTScore_Precision": round(P.mean().item(), 4),
-            "BERTScore_Recall": round(R.mean().item(), 4),
-            "BERTScore_F1": round(F1.mean().item(), 4),
-        })
-    logger.info("BERTScore computation complete.");
+            # Store results
+            bertscore_results.append({
+                "Variant_ID": variant_id,
+                "Model": model_name,
+                "BERTScore_Precision": round(P.mean().item(), 4),
+                "BERTScore_Recall": round(R.mean().item(), 4),
+                "BERTScore_F1": round(F1.mean().item(), 4),
+            })
+
+    logger.info(f"BERTScore computation complete for all models.");
     return pd.DataFrame(bertscore_results)
 
 
 
 def main():
-    # dialogue_csv = "Main Dialogue Dataset - All.csv"
-    dialogue_csv = "../rag_agent/dialogue_example.csv"
-    # attributes_csv = "Separate CSV for Attributes - All.csv"
-    attributes_csv = "../rag_agent/attributes_example.csv"
+    dialogue_csv = "Main Dialogue Dataset - All.csv"
+    # dialogue_csv = "../rag_agent/dialogue_example.csv"
+    attributes_csv = "Separate CSV for Attributes - All.csv"
+    # attributes_csv = "../rag_agent/attributes_example.csv"
     topics_csv = "topics.xlsx"
     rag_csv = "rag_content.xlsx"
     
@@ -712,9 +772,9 @@ def main():
     # readability_df = compute_readability(dialogue_df)
     # developmental_df = compute_developmental_analysis(dialogue_df, attributes_df)
     # communication_df = compute_communication_skills_analysis(dialogue_df, attributes_df)
-    llm_df = compute_parenting_analysis(dialogue_df, attributes_df)
+    # llm_df = compute_parenting_analysis(dialogue_df, attributes_df)
     # descriptive_df = compute_descriptive_statistics(dialogue_df, attributes_df)
-    # entailment_df = compute_turn_level_entailment(dialogue_df)
+    entailment_df = compute_turn_level_entailment(dialogue_df)
     # toxicity_df = compute_toxicity_score(dialogue_df)
     # bertscore_df = compute_bertscore(dialogue_df, topics_df, rag_df)
 
@@ -728,9 +788,9 @@ def main():
     # readability_df.to_csv("readability_scores.csv", index=False)
     # developmental_df.to_csv("developmental_analysis_scores.csv", index=False)
     # communication_df.to_csv("communication_skills_scores.csv", index=False)
-    llm_df.to_csv("parenting_analysis_scores.csv", index=False)
+    # llm_df.to_csv("parenting_analysis_scores.csv", index=False)
     # descriptive_df.to_csv("descriptive_statistics.csv", index=False)
-    # entailment_df.to_csv("turn_level_entailment.csv", index=False)
+    entailment_df.to_csv("turn_level_entailment.csv", index=False)
     # toxicity_df.to_csv("toxicity_scores.csv", index=False)
     # bertscore_df.to_csv("bertscore_results.csv", index=False)
     print("Evaluation completed. Results saved to CSV files.")
